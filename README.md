@@ -97,6 +97,27 @@ from insurance_severity.composite import LognormalBurrComposite
 from insurance_severity.drn import DRN
 ```
 
+---
+
+## Performance
+
+Benchmarked against **single Gamma GLM** (statsmodels) on 10,000 synthetic claims with a known heavy-tailed DGP — Lognormal body below the splice point, Pareto tail above. Full notebook: `notebooks/benchmark.py`.
+
+| Metric | Gamma GLM | Composite spliced (insurance-severity) |
+|--------|-----------|---------------------------------------|
+| Log-likelihood | lower | higher |
+| AIC | higher | lower |
+| 90th / 95th / 99th percentile accuracy | underestimates | near DGP truth |
+| ILF at high policy limits | understated | near DGP truth |
+| Fit time | seconds | seconds + profile-likelihood grid |
+
+The benchmark tests tail quantile accuracy and ILF curves against the known DGP. The Gamma systematically underestimates tail quantiles because its survival function decays exponentially; the composite model fits a separate tail distribution above the profile-likelihood threshold, recovering the heavy tail.
+
+**When to use:** XL reinsurance pricing (where the expected loss in a layer depends entirely on tail behaviour), ILF computation at high policy limits, and large loss loading in ground-up pricing where the true severity distribution is Pareto-like. Concrete situations: motor bodily injury, liability lines, property CAT perils.
+
+**When NOT to use:** When claims are capped (loss-limited data), making it impossible to observe the true tail. Also when the portfolio has fewer than a few thousand claims — the profile-likelihood threshold selection is unstable with sparse data and the composite model may overfit the tail. For homogeneous attritional loss books where a Gamma fits well (small commercial property), the added complexity is not warranted.
+
+
 ## Source repos
 
 - `insurance-composite` — archived, merged into this package
