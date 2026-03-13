@@ -27,15 +27,34 @@ Features:
 - Quantile residuals, mean excess plots, Q-Q plots
 
 ```python
+import numpy as np
 from insurance_severity import LognormalBurrComposite, CompositeSeverityRegressor
 
-# No covariates — mode-matching threshold
+rng = np.random.default_rng(42)
+n = 1000
+
+# Synthetic severity data: lognormal attritional body + Pareto-like large losses
+attritional = rng.lognormal(mean=7.5, sigma=1.2, size=int(n * 0.85))  # ~£1,800 median
+large_losses = rng.pareto(a=2.5, size=int(n * 0.15)) * 50_000 + 10_000
+claim_amounts = np.concatenate([attritional, large_losses])
+rng.shuffle(claim_amounts)
+
+# Rating factors for regression example
+vehicle_age = rng.integers(0, 15, n).astype(float)
+driver_age = rng.integers(18, 75, n).astype(float)
+ncd_years = rng.integers(0, 5, n).astype(float)
+X = np.column_stack([vehicle_age, driver_age, ncd_years])
+n_train = int(0.8 * n)
+X_train, X_test = X[:n_train], X[n_train:]
+y_train = claim_amounts[:n_train]
+
+# No covariates -- mode-matching threshold
 model = LognormalBurrComposite(threshold_method="mode_matching")
 model.fit(claim_amounts)
 print(model.threshold_)
 print(model.ilf(limit=500_000, basic_limit=250_000))
 
-# With covariates — threshold varies by policyholder
+# With covariates -- threshold varies by policyholder
 reg = CompositeSeverityRegressor(
     composite=LognormalBurrComposite(threshold_method="mode_matching"),
 )
@@ -50,10 +69,46 @@ The DRN (Avanzi, Dong, Laub, Wong 2024, arXiv:2406.00998) starts from a frozen G
 
 The practical payoff: you keep the actuarial calibration of your existing GLM pricing model, and the neural network fills in the distributional shape that the GLM can't capture — skewness, heteroskedastic dispersion, tail behaviour by segment.
 
+**Note:** the DRN requires PyTorch. Install it before using this subpackage:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install insurance-severity[glm]
+```
+
 ```python
+import numpy as np
 from insurance_severity import GLMBaseline, DRN
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
+import pandas as pd
+
+rng = np.random.default_rng(42)
+n = 1000
+
+# Synthetic severity data with covariates
+vehicle_age = rng.integers(0, 15, n).astype(float)
+driver_age = rng.integers(18, 75, n).astype(float)
+ncd_years = rng.integers(0, 5, n).astype(float)
+region = rng.choice(["London", "SE", "NW", "Midlands", "Scotland"], n)
+
+# Lognormal claim amounts with some large losses
+log_mu = 7.5 + 0.03 * vehicle_age - 0.005 * driver_age - 0.05 * ncd_years
+claim_amounts = rng.lognormal(mean=log_mu, sigma=1.1 + 0.02 * vehicle_age)
+
+n_train = int(0.8 * n)
+df = pd.DataFrame({
+    "claims": claim_amounts,
+    "age": driver_age,
+    "vehicle_age": vehicle_age,
+    "region": region,
+})
+df_train = df.iloc[:n_train]
+df_test = df.iloc[n_train:]
+X_train = np.column_stack([vehicle_age[:n_train], driver_age[:n_train], ncd_years[:n_train]])
+X_test = np.column_stack([vehicle_age[n_train:], driver_age[n_train:], ncd_years[n_train:]])
+y_train = claim_amounts[:n_train]
+y_test = claim_amounts[n_train:]
 
 # Fit your existing GLM
 glm = smf.glm(
@@ -65,7 +120,7 @@ glm = smf.glm(
 # Wrap it as a baseline
 baseline = GLMBaseline(glm)
 
-# Refine with DRN
+# Refine with DRN (scr_aware=True enables SCR-aware bin cutpoints at 99.5th percentile)
 drn = DRN(baseline, hidden_size=64, max_epochs=300, scr_aware=True)
 drn.fit(X_train, y_train, verbose=True)
 
