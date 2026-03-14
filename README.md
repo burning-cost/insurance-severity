@@ -6,6 +6,41 @@ Comprehensive severity modelling for UK insurance pricing. Two complementary app
 
 Claim severity distributions don't behave like textbook Gamma distributions. You have a body of attritional losses and a heavy tail of large losses, and these two populations have different drivers. Standard GLMs smooth over this structure. This package gives you two principled ways to deal with it.
 
+## Quick Start
+
+```bash
+pip install insurance-severity
+```
+
+```python
+import numpy as np
+from insurance_severity import LognormalBurrComposite
+
+rng = np.random.default_rng(42)
+
+# Synthetic severity: lognormal attritional body + heavy Pareto-like tail
+attritional = rng.lognormal(mean=7.5, sigma=1.0, size=850)    # ~85% of claims
+large_loss  = rng.pareto(a=2.5, size=150) * 40_000 + 8_000    # ~15% large losses
+claims = np.concatenate([attritional, large_loss])
+rng.shuffle(claims)
+
+# Fit the composite model — profile likelihood selects the threshold automatically
+model = LognormalBurrComposite(threshold_method="mode_matching")
+model.fit(claims)
+
+print(f"Threshold:  £{model.threshold_:,.0f}")
+print(f"Body (lognormal) mean:  £{model.body_mean_:,.0f}")
+print(f"Tail weight: {model.tail_weight_:.3f}")
+
+# ILF: expected loss in layer (250k xs 250k) relative to basic limit
+ilf = model.ilf(limit=500_000, basic_limit=250_000)
+print(f"ILF at £500k limit / £250k basic: {ilf:.4f}")
+
+# Tail Value at Risk at 99.5th percentile (Solvency II capital proxy)
+tvar = model.tvar(alpha=0.995)
+print(f"TVaR 99.5%: £{tvar:,.0f}")
+```
+
 ## What's in the package
 
 ### `insurance_severity.composite` — spliced severity models
