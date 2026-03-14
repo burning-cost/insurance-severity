@@ -154,6 +154,11 @@ from insurance_severity.drn import DRN
 
 ---
 
+
+## Databricks Notebook
+
+A ready-to-run Databricks notebook benchmarking this library against standard approaches is available in [burning-cost-examples](https://github.com/burning-cost/burning-cost-examples/blob/main/notebooks/insurance_severity_demo.py).
+
 ## Performance
 
 Benchmarked against **single Gamma GLM** (statsmodels) on 10,000 synthetic claims with a known heavy-tailed DGP — Lognormal body below the splice point, Pareto tail above. Full notebook: `notebooks/benchmark.py`.
