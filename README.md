@@ -1,5 +1,10 @@
 # insurance-severity
 
+[![PyPI](https://img.shields.io/pypi/v/insurance-severity)](https://pypi.org/project/insurance-severity/)
+[![Python](https://img.shields.io/pypi/pyversions/insurance-severity)](https://pypi.org/project/insurance-severity/)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
+[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
+
 Comprehensive severity modelling for UK insurance pricing. Two complementary approaches in one package.
 
 ## The problem
@@ -225,4 +230,3 @@ The benchmark tests tail quantile accuracy and ILF curves against the known DGP.
 | [insurance-frequency-severity](https://github.com/burning-cost/insurance-frequency-severity) | Joint frequency-severity models — combines this library's severity component with frequency in a Sarmanov copula |
 | [insurance-quantile](https://github.com/burning-cost/insurance-quantile) | Quantile GBM for tail risk — non-parametric alternative when parametric severity assumptions are not tenable |
 | [insurance-dynamics](https://github.com/burning-cost/insurance-dynamics) | Loss development models — severity projections are a key input to dynamic reserve models |
-
