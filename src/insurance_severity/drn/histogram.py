@@ -15,6 +15,9 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
+# NumPy 2.0 removed numpy.trapz; use numpy.trapezoid if available
+_trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+
 
 class ExtendedHistogramBatch:
     """
@@ -543,7 +546,7 @@ class ExtendedHistogramBatch:
         integrand = (cdf_grid - indicator) ** 2              # (n, n_points)
         dy = np.diff(y_grid)
         # Trapezoidal rule
-        results = np.trapz(integrand, y_grid, axis=1)
+        results = _trapz(integrand, y_grid, axis=1)
         return results
 
     # ------------------------------------------------------------------
@@ -572,7 +575,7 @@ class ExtendedHistogramBatch:
         p_grid = np.linspace(alpha, 1.0 - 1e-6, n_grid)  # avoid exactly 1.0
         q_grid = self.quantile(p_grid)  # (n, n_grid)
         # Integrate: ES = (1/(1-alpha)) * integral_alpha^1 Q(p) dp
-        es = np.trapz(q_grid, p_grid, axis=1) / (1.0 - alpha)
+        es = _trapz(q_grid, p_grid, axis=1) / (1.0 - alpha)
         return es
 
     # ------------------------------------------------------------------
@@ -611,7 +614,7 @@ class ExtendedHistogramBatch:
             y_grid = np.linspace(1e-8, threshold, 100)
             pdf_grid = self._baseline_pdf(y_grid)  # (n, 100)
             integrand = y_grid[np.newaxis, :] * pdf_grid  # (n, 100)
-            results = np.trapz(integrand, y_grid, axis=1)
+            results = _trapz(integrand, y_grid, axis=1)
         return results
 
     def _baseline_partial_mean_upper(self, threshold: float) -> np.ndarray:
@@ -649,7 +652,7 @@ class ExtendedHistogramBatch:
         y_grid = np.linspace(1e-8, threshold, 50)
         pdf_grid = self._baseline_pdf(y_grid)  # (n, 50)
         integrand = (y_grid ** 2)[np.newaxis, :] * pdf_grid
-        results = np.trapz(integrand, y_grid, axis=1)
+        results = _trapz(integrand, y_grid, axis=1)
         return results
 
     def _baseline_partial_e2_upper(self, threshold: float) -> np.ndarray:
