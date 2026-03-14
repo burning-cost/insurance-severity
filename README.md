@@ -177,3 +177,12 @@ The benchmark tests tail quantile accuracy and ILF curves against the known DGP.
 
 - `insurance-composite` — archived, merged into this package
 - `insurance-drn` — archived, merged into this package
+
+## Related Libraries
+
+| Library | What it does |
+|---------|-------------|
+| [insurance-frequency-severity](https://github.com/burning-cost/insurance-frequency-severity) | Joint frequency-severity models — combines this library's severity component with frequency in a Sarmanov copula |
+| [insurance-quantile](https://github.com/burning-cost/insurance-quantile) | Quantile GBM for tail risk — non-parametric alternative when parametric severity assumptions are not tenable |
+| [insurance-dynamics](https://github.com/burning-cost/insurance-dynamics) | Loss development models — severity projections are a key input to dynamic reserve models |
+
