@@ -393,9 +393,19 @@ class TestDRNBaseline:
         assert drn._is_fitted
 
     def test_scr_aware_cutpoints(self, mock_baseline, tiny_data):
-        """scr_aware=True should set c_K above 99.7th percentile."""
+        """scr_aware=True should set c_K above 99.7th percentile.
+
+        We pass explicit X_val/y_val so the full training y is used for
+        cutpoint computation — otherwise the internal val split may assign
+        the highest values to the val set, making p99.7(train) < p99.7(full).
+        """
         X, y = tiny_data
+        n_val = max(1, int(0.2 * len(y)))
         drn = DRN(mock_baseline, max_epochs=2, scr_aware=True)
-        drn.fit(X, y, verbose=False)
-        p997 = np.percentile(y, 99.7)
+        drn.fit(
+            X.iloc[n_val:], y[n_val:],
+            X_val=X.iloc[:n_val], y_val=y[:n_val],
+            verbose=False,
+        )
+        p997 = np.percentile(y[n_val:], 99.7)
         assert drn._cutpoints[-1] >= p997
