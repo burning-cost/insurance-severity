@@ -569,22 +569,36 @@ class CompositeSeverityRegressor:
                 body_mean, _ = quad(body_integrand, 0.0, t_i, limit=100)
                 tail_mean, _ = quad(tail_integrand, t_i, t_i * 1000 + 1.0, limit=100)
 
-                pi_i = 0.5  # approximation; proper pi requires iteration
+                pi_i = self.pi_mean_
                 means[i] = pi_i * body_mean + (1.0 - pi_i) * tail_mean
         else:
             # Fixed threshold
             t = self.threshold_
+            pi = self.pi_mean_
             if hasattr(self, '_xi'):
                 xi = self._xi
+                # Reconstruct body distribution from stored params
+                body_params = self.body_params_
+                body_global = self.composite._make_body()
+                body_global.params = body_params.copy()
+
                 for i in range(n):
                     sigma_i = np.exp(X[i] @ self._w)
                     tail = GPDTail(xi=xi, sigma=sigma_i)
-                    # Mean of GPD exceedance
+
+                    # Body mean: truncated mean of fitted body distribution
+                    from scipy.integrate import quad
+                    def _body_integrand(x, bp=body_global, threshold=t):
+                        return x * np.exp(bp.logpdf(np.array([x]), threshold))[0]
+                    body_mean, _ = quad(_body_integrand, 0.0, t, limit=100)
+
+                    # Tail mean: E[X] for GPD exceedance, shifted back to original scale
                     if xi < 1.0:
                         tail_mean = t + sigma_i / (1.0 - xi)
                     else:
                         tail_mean = np.inf
-                    means[i] = tail_mean  # simplified: return tail mean
+
+                    means[i] = pi * body_mean + (1.0 - pi) * tail_mean
 
         return means
 
@@ -647,8 +661,8 @@ class CompositeSeverityRegressor:
                 sigma_i = float(np.exp(X[i] @ self._w))
                 tail = GPDTail(xi=xi, sigma=sigma_i)
 
-            # Approximate pi for this observation
-            pi_i = 0.5  # default; refine via ratio of integrated densities
+            # Use fitted pi_mean_ (average body proportion)
+            pi_i = self.pi_mean_
 
             from scipy.integrate import quad
 
@@ -696,6 +710,20 @@ class CompositeSeverityRegressor:
                     ll += np.log(pi) + float(body.logpdf(np.array([y_i]), t_i)[0])
                 else:
                     ll += np.log(1 - pi) + float(tail.logpdf(np.array([y_i]), t_i)[0])
+            else:
+                # Fixed-threshold model: GPD tail
+                t = self.threshold_
+                pi = self.pi_mean_
+                if y_i <= t:
+                    body_params = self.body_params_
+                    body_g = self.composite._make_body()
+                    body_g.params = body_params.copy()
+                    ll += np.log(pi) + float(body_g.logpdf(np.array([y_i]), t)[0])
+                else:
+                    if hasattr(self, '_xi'):
+                        sigma_i = float(np.exp(X_aug[i] @ self._w))
+                        tail = GPDTail(xi=self._xi, sigma=sigma_i)
+                        ll += np.log(1 - pi) + float(tail.logpdf(np.array([y_i]), t)[0])
         return ll / len(y)
 
     def _prepare_X(self, X) -> np.ndarray:

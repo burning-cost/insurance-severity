@@ -101,27 +101,32 @@ def mean_excess_plot(y: np.ndarray, ax=None, max_quantile: float = 0.98):
     mex = []
     counts = []
 
+    stds = []
     for u in thresholds:
         excesses = y[y > u] - u
         if len(excesses) > 5:
             mex.append(np.mean(excesses))
+            stds.append(np.std(excesses, ddof=1))
             counts.append(len(excesses))
         else:
             mex.append(np.nan)
+            stds.append(np.nan)
             counts.append(0)
 
     mex = np.array(mex)
+    stds = np.array(stds)
     counts = np.array(counts)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 5))
 
     mask = ~np.isnan(mex)
+    se = stds[mask] / np.sqrt(counts[mask])
     ax.plot(thresholds[mask], mex[mask], "b-", lw=1.5)
     ax.fill_between(
         thresholds[mask],
-        mex[mask] - 1.96 * mex[mask] / np.sqrt(counts[mask]),
-        mex[mask] + 1.96 * mex[mask] / np.sqrt(counts[mask]),
+        mex[mask] - 1.96 * se,
+        mex[mask] + 1.96 * se,
         alpha=0.2,
         color="blue",
         label="95% CI",

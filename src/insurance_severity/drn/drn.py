@@ -26,7 +26,7 @@ import pandas as pd
 import polars as pl
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+# DataLoader/TensorDataset removed — mini-batching done with torch.randperm
 
 from insurance_severity.drn.baseline import BaselineDistribution
 from insurance_severity.drn.cutpoints import drn_cutpoints
@@ -309,8 +309,6 @@ class DRN:
 
         # Step 6: train
         optimizer = optim.Adam(self._network.parameters(), lr=self.lr)
-        dataset = TensorDataset(X_t, bp_t, y_t, y_ind_t, *([] if exp_t is None else [exp_t]))
-
         best_val_loss = float("inf")
         best_weights = copy.deepcopy(self._network.state_dict())
         epochs_no_improve = 0
@@ -378,7 +376,13 @@ class DRN:
                 drn_logits_val = torch.log(bp_val_t) + log_adj_val
                 drn_pmf_val = torch.softmax(drn_logits_val, dim=1)
                 cdf_pred_val = torch.cumsum(drn_pmf_val, dim=1)[:, :-1]
-                val_loss = float(jbce_loss(cdf_pred_val, y_ind_val_t).item())
+                if self.loss == "nll":
+                    bin_idx_val = self._get_bin_indices_from_cutpoints(
+                        y_val_t, self._cutpoints
+                    )
+                    val_loss = float(nll_loss(drn_pmf_val, bin_idx_val, bin_widths_t).item())
+                else:
+                    val_loss = float(jbce_loss(cdf_pred_val, y_ind_val_t).item())
 
             self._train_history["train_loss"].append(train_loss_epoch)
             self._train_history["val_loss"].append(val_loss)
@@ -782,12 +786,28 @@ class DRN:
         # y[:, None] <= interior[None, :] gives (n, K-1) bool
         return (y[:, np.newaxis] <= interior[np.newaxis, :]).astype(np.float32)
 
+    def _get_bin_indices(self, y: torch.Tensor, bin_widths: torch.Tensor) -> torch.Tensor:
+        """Get bin index for each observation (for NLL loss).
+
+        Uses self._cutpoints interior boundaries [c_1, ..., c_{K-1}].
+        torch.bucketize returns 0 for y <= c_1, k for c_k < y <= c_{k+1}, K-1 for y > c_{K-1}.
+        """
+        boundaries = torch.tensor(
+            self._cutpoints[1:-1], dtype=torch.float32, device=y.device
+        )
+        idx = torch.bucketize(y, boundaries)  # shape (n,), values in [0, K-1]
+        return idx.clamp(0, len(boundaries))
+
     @staticmethod
-    def _get_bin_indices(y: torch.Tensor, bin_widths: torch.Tensor) -> torch.Tensor:
-        """Get bin index for each observation (for NLL loss)."""
-        # Not used in default JBCE mode; placeholder for NLL path
-        # Just return zeros — NLL mode needs cutpoints which are numpy, handle separately
-        return torch.zeros(len(y), dtype=torch.long, device=y.device)
+    def _get_bin_indices_from_cutpoints(
+        y: torch.Tensor, cutpoints: np.ndarray
+    ) -> torch.Tensor:
+        """Static variant that takes cutpoints explicitly (used in validation)."""
+        boundaries = torch.tensor(
+            cutpoints[1:-1], dtype=torch.float32, device=y.device
+        )
+        idx = torch.bucketize(y, boundaries)
+        return idx.clamp(0, len(boundaries))
 
     def _score_nll(self, dist: ExtendedHistogramBatch, y: np.ndarray) -> float:
         """NLL using histogram density."""

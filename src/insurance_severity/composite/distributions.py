@@ -600,13 +600,12 @@ class BurrTail(TailDistribution):
 
     Equivalent to Singh-Maddala distribution. Special case of GBII with nu=1.
 
-    Mode: exists and is positive for alpha > 1:
-        mode = (1/beta) * [(alpha - 1) / (delta * alpha + 1)]^{1/delta}
-             = beta * [(alpha - 1) / (delta * alpha + 1)]^{1/delta}
+    Mode: exists and is positive for delta > 1:
+        mode = beta * [(delta - 1) / (alpha * delta + 1)]^{1/delta}
 
     This is the key property enabling mode-matching composite models.
-    For mode-matching we require alpha > 1, enforced via reparameterisation
-    log(alpha - 1) during estimation.
+    For mode-matching we require delta > 1, enforced via reparameterisation
+    log(delta - 1) during estimation.
 
     Parameters
     ----------
