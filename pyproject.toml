@@ -72,6 +72,13 @@ all = [
     "patsy>=0.5",
 ]
 
+
+[project.urls]
+Homepage = "https://github.com/burning-cost/insurance-severity"
+Repository = "https://github.com/burning-cost/insurance-severity"
+"Bug Tracker" = "https://github.com/burning-cost/insurance-severity/issues"
+Documentation = "https://github.com/burning-cost/insurance-severity#readme"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/insurance_severity"]
 
