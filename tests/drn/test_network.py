@@ -4,7 +4,8 @@ Tests for DRNNetwork — the PyTorch feedforward neural network.
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from insurance_severity.drn.network import DRNNetwork
 

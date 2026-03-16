@@ -17,7 +17,8 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from insurance_severity.drn.drn import DRN
 from insurance_severity.composite.models import (

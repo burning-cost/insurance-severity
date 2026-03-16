@@ -15,7 +15,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from insurance_severity.drn.drn import DRN
 from insurance_severity.drn.histogram import ExtendedHistogramBatch
@@ -278,7 +279,7 @@ class TestDRNAdjustmentFactors:
 
     def test_adjustment_factors_non_negative(self):
         """Adjustment factors a_k = p_k/b_k should be non-negative.
-        
+
         With softmax output, DRN probs are always > 0 in theory but may
         be numerically zero in float32 for extreme bins. The ratio must
         be >= 0.

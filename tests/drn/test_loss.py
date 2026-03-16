@@ -4,7 +4,8 @@ Tests for JBCE loss and regularisation terms.
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from insurance_severity.drn.loss import jbce_loss, drn_regularisation, nll_loss
 
