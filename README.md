@@ -33,9 +33,13 @@ rng.shuffle(claims)
 model = LognormalBurrComposite(threshold_method="mode_matching")
 model.fit(claims)
 
-print(f"Threshold:  £{model.threshold_:,.0f}")
-print(f"Body (lognormal) mean:  £{model.body_mean_:,.0f}")
-print(f"Tail weight: {model.tail_weight_:.3f}")
+print(f"Threshold:       £{model.threshold_:,.0f}")
+# body_params_ = [mu, sigma] for the lognormal; tail_params_ = [alpha, delta, beta] for Burr XII
+mu, sigma = model.body_params_
+alpha, delta, beta = model.tail_params_
+print(f"Body lognormal:  mu={mu:.3f}, sigma={sigma:.3f}  (log-scale)")
+print(f"Tail Burr XII:   alpha={alpha:.3f}, delta={delta:.3f}, beta={beta:,.0f}")
+print(f"Body weight pi:  {model.pi_:.3f}  ({model.pi_*100:.1f}% of claims are attritional)")
 
 # ILF: expected loss in layer (250k xs 250k) relative to basic limit
 ilf = model.ilf(limit=500_000, basic_limit=250_000)

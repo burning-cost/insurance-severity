@@ -48,21 +48,28 @@ from insurance_severity.composite import (
     qq_plot,
 )
 
-# DRN subpackage
-from insurance_severity.drn import (
-    BaselineDistribution,
-    GLMBaseline,
-    CatBoostBaseline,
-    ExtendedHistogramBatch,
-    DRNNetwork,
-    DRN,
-    DRNDiagnostics,
-    drn_cutpoints,
-    jbce_loss,
-    drn_regularisation,
-)
+# DRN subpackage — lazy import because torch is an optional dependency.
+# Use: pip install insurance-severity[drn]
+# Then: from insurance_severity.drn import DRN, GLMBaseline
+try:
+    from insurance_severity.drn import (
+        BaselineDistribution,
+        GLMBaseline,
+        CatBoostBaseline,
+        ExtendedHistogramBatch,
+        DRNNetwork,
+        DRN,
+        DRNDiagnostics,
+        drn_cutpoints,
+        jbce_loss,
+        drn_regularisation,
+    )
+except ImportError:
+    # torch not installed; DRN classes not available at top level.
+    # Install with: pip install insurance-severity[drn]
+    pass
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     # Composite

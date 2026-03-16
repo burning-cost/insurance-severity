@@ -84,7 +84,7 @@ class CompositeSeverityRegressor:
 
     Examples
     --------
-    >>> from insurance_composite import CompositeSeverityRegressor, LognormalBurrComposite
+    >>> from insurance_severity.composite import CompositeSeverityRegressor, LognormalBurrComposite
     >>> reg = CompositeSeverityRegressor(
     ...     composite=LognormalBurrComposite(threshold_method="mode_matching"),
     ...     feature_cols=["vehicle_age", "driver_age"],
@@ -530,6 +530,14 @@ class CompositeSeverityRegressor:
 
         Computed numerically for accuracy.
 
+        Note on pi: in mode-matching regression, the body weight pi varies
+        per observation in principle (it is set by density balance at t_i).
+        We approximate it with pi_mean_ — the fraction of training observations
+        below their per-observation threshold. This is accurate when the threshold
+        regression is well-calibrated. For a typical attritional book pi_mean_
+        is around 0.80-0.90, so using the fitted value rather than 0.5 matters
+        materially for the predicted mean.
+
         Returns
         -------
         means : ndarray of shape (n,)
@@ -569,7 +577,7 @@ class CompositeSeverityRegressor:
                 body_mean, _ = quad(body_integrand, 0.0, t_i, limit=100)
                 tail_mean, _ = quad(tail_integrand, t_i, t_i * 1000 + 1.0, limit=100)
 
-                pi_i = self.pi_mean_
+                pi_i = self.pi_mean_  # fitted body fraction (fraction of obs below threshold)
                 means[i] = pi_i * body_mean + (1.0 - pi_i) * tail_mean
         else:
             # Fixed threshold
@@ -661,7 +669,8 @@ class CompositeSeverityRegressor:
                 sigma_i = float(np.exp(X[i] @ self._w))
                 tail = GPDTail(xi=xi, sigma=sigma_i)
 
-            # Use fitted pi_mean_ (average body proportion)
+            # Use fitted body fraction; varies per obs in principle but pi_mean_ is
+            # a reliable approximation when threshold regression is well-calibrated.
             pi_i = self.pi_mean_
 
             from scipy.integrate import quad

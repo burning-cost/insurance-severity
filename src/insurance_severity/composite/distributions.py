@@ -610,9 +610,9 @@ class BurrTail(TailDistribution):
     Parameters
     ----------
     alpha : float
-        Shape parameter controlling tail heaviness (alpha > 1 for mode-matching).
+        Shape parameter controlling tail heaviness (alpha > 0).
     delta : float
-        Shape parameter controlling body shape (delta > 0).
+        Shape parameter controlling body shape (delta > 1 for mode-matching).
     beta : float
         Scale parameter (beta > 0).
     """

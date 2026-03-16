@@ -362,7 +362,15 @@ class CompositeSeverityModel:
         """
         Tail Value at Risk (Expected Shortfall) at level alpha.
 
-        TVaR_alpha(X) = E[X | X > VaR_alpha(X)]
+        For a continuous distribution:
+
+            TVaR_alpha(X) = VaR_alpha(X) + E[X - VaR_alpha(X) | X > VaR_alpha(X)]
+                          = (1 / (1 - alpha)) * integral_{VaR_alpha}^{inf} S(x) dx
+
+        This equals E[X | X > VaR_alpha(X)] for continuous distributions (the
+        conditional mean above the VaR), but the integral form is used here
+        because it is numerically more stable. For discrete or mixed distributions
+        these two formulas differ; this implementation uses the integral form.
 
         Computed numerically for the composite distribution.
         """
@@ -531,7 +539,7 @@ class LognormalBurrComposite(CompositeSeverityModel):
 
     This is the primary model for covariate-dependent threshold estimation.
     Mode-matching is supported: threshold = Burr XII mode, which requires
-    alpha > 1. The lognormal mu is derived from the mode-matching condition
+    delta > 1. The lognormal mu is derived from the mode-matching condition
     mu = sigma^2 + log(threshold), ensuring C1 continuity at the splice.
 
     Parameters
@@ -566,12 +574,12 @@ class LognormalBurrComposite(CompositeSeverityModel):
 
         Mode-matching conditions:
         (1) threshold t = Burr_mode(alpha, delta, beta)
-                       = beta * [(alpha-1)/(delta*alpha+1)]^{1/delta}
+                       = beta * [(delta-1)/(alpha*delta+1)]^{1/delta}
         (2) lognormal mu = sigma^2 + log(t)  [lognormal mode = t]
         (3) continuity: pi derived from density balance at t
 
-        Free parameters: sigma (lognormal), alpha, delta, beta (Burr) s.t. alpha > 1.
-        Reparameterisation: log(alpha - 1) to enforce alpha > 1 unconstrained.
+        Free parameters: sigma (lognormal), alpha, delta, beta (Burr) s.t. delta > 1.
+        Reparameterisation: log(delta - 1) to enforce delta > 1 unconstrained.
 
         The negative log-likelihood over these 4 free parameters is minimised
         using L-BFGS-B (unconstrained after reparameterisation).
