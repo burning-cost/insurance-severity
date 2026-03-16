@@ -201,21 +201,26 @@ A ready-to-run Databricks notebook benchmarking this library against standard ap
 
 ## Performance
 
-Benchmarked against **single Gamma GLM** (statsmodels) on 10,000 synthetic claims with a known heavy-tailed DGP — Lognormal body below the splice point, Pareto tail above. Full notebook: `notebooks/benchmark.py`.
+Benchmarked against a **single Lognormal** on 2,500 train / 500 test synthetic claims with a known heavy-tailed DGP — Lognormal body (85%) below the splice point, Pareto tail (alpha=2.0, 15%) above. Post-Phase-98 fix numbers (composite predict() now returns the full mixture, pi fitted from data). Full script: `benchmarks/benchmark.py`.
 
-| Metric | Gamma GLM | Composite spliced (insurance-severity) |
-|--------|-----------|---------------------------------------|
-| Log-likelihood | lower | higher |
-| AIC | higher | lower |
-| 90th / 95th / 99th percentile accuracy | underestimates | near DGP truth |
-| ILF at high policy limits | understated | near DGP truth |
-| Fit time | seconds | seconds + profile-likelihood grid |
+DGP true quantiles: 95th=12,087 | 99th=24,701 | 99.5th=33,435.
 
-The benchmark tests tail quantile accuracy and ILF curves against the known DGP. The Gamma systematically underestimates tail quantiles because its survival function decays exponentially; the composite model fits a separate tail distribution above the profile-likelihood threshold, recovering the heavy tail.
+| Metric | Single Lognormal | LognormalGPDComposite |
+|--------|-----------------|----------------------|
+| 95th percentile | 13,178 (err 1,091) | 11,586 (err 501) |
+| 99th percentile | 27,702 (err 3,001) | 22,551 (err 2,150) |
+| 99.5th percentile | 36,360 (err 2,925) | 29,465 (err 3,970) |
+| Total tail error (sum of 3) | 7,017 | 6,621 |
+| Test log-likelihood | -4,613.8 | -4,613.6 |
+| Fit time | <1s | 2–5s (profile-likelihood grid) |
+
+Overall tail quantile improvement: **5.6%** reduction in absolute error across the three quantile levels. The composite model fits a GPD tail above the profile-likelihood threshold (fitted ~5,022) with body weight pi=0.73.
+
+The improvement is modest but directionally correct. On 3,000 observations with moderate tail heaviness (Pareto alpha=2.0), the profile-likelihood threshold selection has limited data in the tail — the Pareto 99.5th estimate overshoots (error 3,970 vs lognormal 2,925) because the GPD is trying to fit from only ~375 tail observations. At larger sample sizes (20k+) the tail fit stabilises and the composite advantage grows.
 
 **When to use:** XL reinsurance pricing (where the expected loss in a layer depends entirely on tail behaviour), ILF computation at high policy limits, and large loss loading in ground-up pricing where the true severity distribution is Pareto-like. Concrete situations: motor bodily injury, liability lines, property CAT perils.
 
-**When NOT to use:** When claims are capped (loss-limited data), making it impossible to observe the true tail. Also when the portfolio has fewer than a few thousand claims — the profile-likelihood threshold selection is unstable with sparse data and the composite model may overfit the tail. For homogeneous attritional loss books where a Gamma fits well (small commercial property), the added complexity is not warranted.
+**When NOT to use:** When claims are capped (loss-limited data). Also when the portfolio has fewer than a few thousand claims — the profile-likelihood threshold selection is unstable with sparse data and the composite model may overfit the tail. For homogeneous attritional loss books where a Gamma fits well (small commercial property), the added complexity is not warranted.
 
 
 ## Source repos
