@@ -7,6 +7,8 @@ import pandas as pd
 import polars as pl
 import pytest
 
+torch = pytest.importorskip("torch")
+
 from insurance_severity.drn.diagnostics import DRNDiagnostics
 from insurance_severity.drn.drn import DRN
 
