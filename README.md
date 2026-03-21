@@ -175,6 +175,41 @@ print(dist.quantile(0.995))  # 99.5th percentile -- Solvency II SCR
 print(dist.crps(y_test))     # CRPS scoring
 ```
 
+### `insurance_severity.evt` — Extreme Value Theory for censored and truncated claims
+
+Standard composite models assume you have clean, ground-up severity data. In practice you don't: policy limits truncate the right tail, IBNR means large claims are systematically under-reported at valuation, and the data you observe is not the data you need to model. The EVT module handles these distortions explicitly.
+
+The three classes are based on Albrecher et al. (2025) — tail estimation under policy limits, IBNR censoring, and physically bounded tails.
+
+**`TruncatedGPD`** — Generalised Pareto Distribution fitted to exceedances above a threshold, with optional right-truncation at a policy limit. If you naively fit a GPD to capped claims without accounting for the cap, you underestimate the tail index. This corrects that via MLE over the truncated likelihood.
+
+**`CensoredHillEstimator`** — Hill estimator corrected for right-censoring. The standard Hill estimator applied to censored order statistics is biased; this uses the formula `sum(log x_j) - k * log(boundary)` to recover the true Pareto tail index from the top-k observations.
+
+**`WeibullTemperedPareto`** — Models raw severity (x > 0) with a Pareto body and exponential tempering in the extreme tail. Useful when physical constraints bound the maximum possible loss — a nuclear power plant has a finite replacement cost, even if an unconstrained Pareto fit would extrapolate beyond it. Fitted via MLE.
+
+```python
+from insurance_severity.evt import TruncatedGPD, CensoredHillEstimator, WeibullTemperedPareto
+
+# GPD fitted to exceedances above £10k, truncated at £100k policy limit
+gpd = TruncatedGPD()
+gpd.fit(large_claims, threshold=10_000, upper=100_000)
+print(gpd.summary())
+
+# Hill estimator corrected for censoring at £50k
+hill = CensoredHillEstimator()
+hill.fit(claims, boundary=50_000)
+print(f"Tail index: {hill.xi:.3f}")
+
+# Tempered Pareto — Pareto body with bounded extreme tail
+wtp = WeibullTemperedPareto()
+wtp.fit(claims)
+print(wtp.summary())
+```
+
+All three classes expose `pdf`, `cdf`, `ppf`, `rvs` where appropriate, a `xi` property for the tail index, and a `summary()` method. `TruncatedGPD` additionally provides `mean_excess()` for mean excess plot diagnostics.
+
+**When to use:** XL reinsurance where the cession data is limit-censored; reserving triangles where large claims are IBNR-censored; any context where naively fitting a GPD to the observed data would produce a biased tail index because not all large losses are visible in the data at valuation.
+
 ## Installation
 
 ```bash
@@ -194,6 +229,7 @@ Access subpackages directly if you only need one approach:
 ```python
 from insurance_severity.composite import LognormalBurrComposite
 from insurance_severity.drn import DRN
+from insurance_severity.evt import TruncatedGPD, CensoredHillEstimator, WeibullTemperedPareto
 ```
 
 ---
