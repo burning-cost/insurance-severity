@@ -274,8 +274,10 @@ The improvement is modest but directionally correct. On 3,000 observations with 
 
 ## Related Libraries
 
-| Library | What it does |
+| Library | Description |
 |---------|-------------|
-| [insurance-frequency-severity](https://github.com/burning-cost/insurance-frequency-severity) | Joint frequency-severity models — combines this library's severity component with frequency in a Sarmanov copula |
 | [insurance-quantile](https://github.com/burning-cost/insurance-quantile) | Quantile GBM for tail risk — non-parametric alternative when parametric severity assumptions are not tenable |
+| [insurance-conformal](https://github.com/burning-cost/insurance-conformal) | Distribution-free prediction intervals — conformal wrappers for severity point forecasts |
+| [insurance-distributional](https://github.com/burning-cost/insurance-distributional) | Distributional GBM — models the full conditional distribution including variance, not just the mean |
+| [insurance-frequency-severity](https://github.com/burning-cost/insurance-frequency-severity) | Joint frequency-severity models — combines this library's severity component with frequency in a Sarmanov copula |
 | [insurance-dynamics](https://github.com/burning-cost/insurance-dynamics) | Loss development models — severity projections are a key input to dynamic reserve models |
