@@ -7,6 +7,8 @@
 
 Comprehensive severity modelling for UK insurance pricing. Two complementary approaches in one package.
 
+**Blog post:** [Spliced Severity Distributions: When One Distribution Isn't Enough](https://burning-cost.github.io/2027/01/15/spliced-severity-distributions-when-one-distribution-isnt-enough/)
+
 ## The problem
 
 Claim severity distributions don't behave like textbook Gamma distributions. You have a body of attritional losses and a heavy tail of large losses, and these two populations have different drivers. Standard GLMs smooth over this structure. This package gives you two principled ways to deal with it.
@@ -16,6 +18,8 @@ Claim severity distributions don't behave like textbook Gamma distributions. You
 ```bash
 pip install insurance-severity
 ```
+
+> 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-severity/discussions). Found it useful? A ⭐ helps others find it.
 
 ```python
 import numpy as np
