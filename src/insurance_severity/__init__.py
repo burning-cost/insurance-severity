@@ -13,9 +13,10 @@ Combines three complementary approaches:
    neural network. For when you want the actuarial calibration of a GLM
    but the distributional flexibility of a neural network.
 
-3. **Extreme Value Theory** — insurance_severity.evt
-   EVT methods corrected for policy limit truncation and IBNR right-censoring.
-   TruncatedGPD, CensoredHillEstimator, WeibullTemperedPareto.
+3. **EVT classes** — insurance_severity.evt
+   Truncated GPD MLE (policy limits), censoring-corrected Hill estimator
+   (IBNR), and Weibull-tempered Pareto (bounded tails). For when standard
+   GPD gives biased estimates because your data has truncation or censoring.
 
 Quick start — composite:
 
@@ -35,9 +36,16 @@ Quick start — DRN:
 
 Quick start — EVT:
 
->>> from insurance_severity import evt
->>> model = evt.TruncatedGPD()
->>> model.fit_mle(claims, threshold=100_000, limits=policy_limits)
+>>> from insurance_severity import TruncatedGPD, CensoredHillEstimator, WeibullTemperedPareto
+>>> gpd = TruncatedGPD(threshold=10_000)
+>>> gpd.fit(exceedances, limits)  # limits = per-policy caps
+>>> gpd.summary()
+>>> hill = CensoredHillEstimator()
+>>> hill.fit(claims, censored=ibnr_flag)
+>>> hill.xi, hill.ci
+>>> wtp = WeibullTemperedPareto(threshold=10_000)
+>>> wtp.fit(exceedances)
+>>> wtp.isf(0.001)  # 99.9th percentile of excess
 """
 
 # Composite subpackage
@@ -57,10 +65,6 @@ from insurance_severity.composite import (
     density_overlay_plot,
     qq_plot,
 )
-
-# EVT subpackage — accessed as insurance_severity.evt
-# Not flat-imported to avoid cluttering the namespace of users who don't need EVT.
-from insurance_severity import evt
 
 # DRN subpackage — lazy import because torch is an optional dependency.
 # Use: pip install insurance-severity[drn]
@@ -83,11 +87,16 @@ except ImportError:
     # Install with: pip install insurance-severity[drn]
     pass
 
+# EVT subpackage
+from insurance_severity.evt import (
+    TruncatedGPD,
+    CensoredHillEstimator,
+    WeibullTemperedPareto,
+)
+
 __version__ = "0.2.0"
 
 __all__ = [
-    # EVT subpackage namespace
-    "evt",
     # Composite
     "LognormalBody",
     "GammaBody",
@@ -114,4 +123,8 @@ __all__ = [
     "drn_cutpoints",
     "jbce_loss",
     "drn_regularisation",
+    # EVT
+    "TruncatedGPD",
+    "CensoredHillEstimator",
+    "WeibullTemperedPareto",
 ]
