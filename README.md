@@ -16,7 +16,7 @@ Claim severity distributions don't behave like textbook Gamma distributions. You
 ## Quick Start
 
 ```bash
-pip install insurance-severity
+uv add insurance-severity
 ```
 
 > 💬 Questions or feedback? Start a [Discussion](https://github.com/burning-cost/insurance-severity/discussions). Found it useful? A ⭐ helps others find it.
@@ -120,8 +120,8 @@ The practical payoff: you keep the actuarial calibration of your existing GLM pr
 **Note:** the DRN requires PyTorch. Install it before using this subpackage:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install insurance-severity[glm]
+uv add torch --index-url https://download.pytorch.org/whl/cpu
+uv add "insurance-severity[glm]"
 ```
 
 ```python
@@ -217,13 +217,13 @@ All three classes expose `pdf`, `cdf`, `ppf`, `rvs` where appropriate, a `xi` pr
 ## Installation
 
 ```bash
-pip install insurance-severity
+uv add insurance-severity
 ```
 
 With GLM support (statsmodels):
 
 ```bash
-pip install insurance-severity[glm]
+uv add "insurance-severity[glm]"
 ```
 
 ## Subpackages
