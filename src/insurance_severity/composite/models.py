@@ -453,19 +453,45 @@ class CompositeSeverityModel:
         return norm.ppf(p)
 
     def aic(self, y: np.ndarray) -> float:
-        """Akaike Information Criterion."""
-        if self.loglik_ is None:
-            self.loglik_ = float(np.sum(self.logpdf(y)))
+        """Akaike Information Criterion computed on the supplied data.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            The data to evaluate the log-likelihood on.  Pass the same
+            array used for training to get the training AIC, or a held-out
+            validation set to get the validation AIC.
+
+        Note: the loglik_ attribute stores the *training* log-likelihood and
+        is NOT used here, to prevent silently returning training AIC when
+        validation data is passed.
+        """
+        self._check_fitted()
+        y = np.asarray(y, dtype=float)
+        loglik_y = float(np.sum(self.logpdf(y)))
         k = len(self.body_params_) + len(self.tail_params_) + 1  # +1 for pi
-        return 2.0 * k - 2.0 * self.loglik_
+        return 2.0 * k - 2.0 * loglik_y
 
     def bic(self, y: np.ndarray) -> float:
-        """Bayesian Information Criterion."""
-        if self.loglik_ is None:
-            self.loglik_ = float(np.sum(self.logpdf(y)))
+        """Bayesian Information Criterion computed on the supplied data.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            The data to evaluate the log-likelihood on.  Pass the same
+            array used for training to get the training BIC, or a held-out
+            validation set to get the validation BIC.
+
+        Note: the loglik_ attribute stores the *training* log-likelihood and
+        is NOT used here, to prevent silently returning training BIC when
+        validation data is passed.
+        """
+        self._check_fitted()
+        y = np.asarray(y, dtype=float)
+        loglik_y = float(np.sum(self.logpdf(y)))
         k = len(self.body_params_) + len(self.tail_params_) + 1
         n = len(y)
-        return k * np.log(n) - 2.0 * self.loglik_
+        return k * np.log(n) - 2.0 * loglik_y
 
     def summary(self, y: Optional[np.ndarray] = None) -> str:
         """Return a text summary of fitted model."""

@@ -579,12 +579,11 @@ class WeibullTemperedPareto:
         if len(y) == 0:
             raise ValueError("exceedances is empty")
         if np.any(y <= 0):
-            warnings.warn(
-                "WeibullTemperedPareto requires positive claim values. "
-                "Filtering out non-positive values.",
-                stacklevel=2,
+            raise ValueError(
+                "WeibullTemperedPareto requires strictly positive claim values. "
+                f"Got {int(np.sum(y <= 0))} non-positive value(s). "
+                "Filter out non-positive values before calling fit()."
             )
-            y = y[y > 0]
 
         y = np.sort(y)[::-1]  # descending
 

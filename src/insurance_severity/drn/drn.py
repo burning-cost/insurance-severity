@@ -93,7 +93,7 @@ class DRN:
 
     Examples
     --------
-    >>> from insurance_drn import GLMBaseline, DRN
+    >>> from insurance_severity.drn import GLMBaseline, DRN
     >>> import statsmodels.formula.api as smf
     >>> import statsmodels.api as sm
     >>> glm = smf.glm(
@@ -441,6 +441,14 @@ class DRN:
             Vectorised batch of extended histogram distributions.
         """
         self._check_fitted()
+        if exposure is not None:
+            warnings.warn(
+                "predict_distribution() does not use the 'exposure' parameter — "
+                "exposure is only relevant during training (as a sample weight). "
+                "The parameter will be ignored. Pass exposure=None to suppress this warning.",
+                UserWarning,
+                stacklevel=2,
+            )
         X_df, _ = self._validate_inputs(X, None)
         X_np = X_df.values if isinstance(X_df, pd.DataFrame) else X_df
 
