@@ -94,7 +94,12 @@ from insurance_severity.evt import (
     WeibullTemperedPareto,
 )
 
-__version__ = "0.2.1"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("insurance-severity")
+except PackageNotFoundError:
+    __version__ = "0.0.0"  # not installed
 
 __all__ = [
     # Composite
