@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.2.3 (2026-03-25)
+- feat: add TailVariableImportance to EVT module — adapted lasso with tail-weighted residuals for identifying extreme-claim drivers (arXiv:2504.06984)
+- Standard Gini/SHAP importance reflects bulk behaviour; TailVariableImportance isolates what matters above the configurable tail threshold
+- 15 tests covering: signal recovery, importances sum to 1, feature name handling, summary keys, plot rendering, and input validation
+
 ## v0.2.1 (2026-03-22) [unreleased]
 - Add Databricks benchmark script and expand benchmark results section
 - fix: use plain string license field for setuptools compatibility

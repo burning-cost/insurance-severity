@@ -46,6 +46,15 @@ Quick start — EVT:
 >>> wtp = WeibullTemperedPareto(threshold=10_000)
 >>> wtp.fit(exceedances)
 >>> wtp.isf(0.001)  # 99.9th percentile of excess
+
+Quick start — tail variable importance:
+
+>>> from insurance_severity import TailVariableImportance
+>>> tvi = TailVariableImportance(threshold_quantile=0.90, alpha=0.1)
+>>> tvi.fit(X_train, y_train, feature_names=feature_cols)
+>>> tvi.importances          # dict: feature -> tail importance
+>>> tvi.summary()            # threshold, n_selected, etc.
+>>> tvi.plot(top_k=10)       # horizontal bar chart
 """
 
 # Composite subpackage
@@ -92,6 +101,7 @@ from insurance_severity.evt import (
     TruncatedGPD,
     CensoredHillEstimator,
     WeibullTemperedPareto,
+    TailVariableImportance,
 )
 
 from importlib.metadata import version, PackageNotFoundError
@@ -132,4 +142,5 @@ __all__ = [
     "TruncatedGPD",
     "CensoredHillEstimator",
     "WeibullTemperedPareto",
+    "TailVariableImportance",
 ]

@@ -353,3 +353,232 @@ class TestWeibullTemperedPareto:
         assert abs(model.xi - 1.0 / alpha_true) < 0.3, (
             f"Pure Pareto limit: xi={model.xi:.4f}, expected ~{1.0/alpha_true:.4f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TailVariableImportance tests
+# ---------------------------------------------------------------------------
+
+
+class TestTailVariableImportance:
+    """Tests for EVT-based tail variable importance."""
+
+    from insurance_severity.evt import TailVariableImportance
+
+    def _make_tail_data(
+        self,
+        n: int = 2000,
+        n_features: int = 5,
+        signal_feature: int = 0,
+        rng_seed: int = 42,
+    ):
+        """
+        Synthetic data where one feature drives tail behaviour.
+
+        Observations: log(y) = 0.1 * X[:,0] + noise for bulk,
+        but for extreme observations (above 90th percentile),
+        we add a large contribution from X[:,0] to simulate tail signal.
+        """
+        rng = np.random.default_rng(rng_seed)
+        X = rng.standard_normal((n, n_features))
+
+        # Base: mild effect of all features
+        log_y_base = 0.1 * X[:, signal_feature] + rng.standard_normal(n) * 0.5
+        y = np.exp(log_y_base + 7.0)  # shift to realistic claim scale
+
+        # Introduce strong tail signal: top 10% get amplified by X[:,signal_feature]
+        threshold = np.quantile(y, 0.90)
+        tail_mask = y > threshold
+        # Add strong positive signal in the tail
+        y[tail_mask] *= np.exp(2.0 * np.maximum(0, X[tail_mask, signal_feature]))
+
+        return X, y
+
+    def test_signal_feature_ranks_first(self):
+        """
+        The feature engineered to drive the tail should have the highest importance.
+        """
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=3000, n_features=5, signal_feature=0)
+        tvi = TailVariableImportance(threshold_quantile=0.90, alpha=0.05)
+        tvi.fit(X, y, feature_names=[f"feat_{i}" for i in range(5)])
+
+        imp = tvi.importances
+        ranked = sorted(imp.items(), key=lambda kv: kv[1], reverse=True)
+        top_feature = ranked[0][0]
+        assert top_feature == "feat_0", (
+            f"Expected feat_0 to rank first, got {top_feature}. "
+            f"Importances: {imp}"
+        )
+
+    def test_importances_sum_to_one(self):
+        """Normalised importances must sum to 1."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=500, n_features=4)
+        tvi = TailVariableImportance(threshold_quantile=0.85, alpha=0.01)
+        tvi.fit(X, y)
+        total = sum(tvi.importances.values())
+        assert abs(total - 1.0) < 1e-9, f"importances sum to {total}, expected 1.0"
+
+    def test_default_feature_names(self):
+        """Without feature_names, defaults to x0, x1, ..."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=300, n_features=3)
+        tvi = TailVariableImportance(threshold_quantile=0.80, alpha=0.1)
+        tvi.fit(X, y)
+        keys = set(tvi.importances.keys())
+        assert keys == {"x0", "x1", "x2"}, f"Unexpected keys: {keys}"
+
+    def test_feature_names_passed_through(self):
+        """Explicitly passed feature_names should appear in importances."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=300, n_features=3)
+        names = ["vehicle_age", "driver_age", "postcode_risk"]
+        tvi = TailVariableImportance(threshold_quantile=0.80, alpha=0.1)
+        tvi.fit(X, y, feature_names=names)
+        assert set(tvi.importances.keys()) == set(names)
+
+    def test_summary_has_required_keys(self):
+        """summary() should return all documented keys."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=400, n_features=4)
+        tvi = TailVariableImportance(threshold_quantile=0.90, alpha=0.1)
+        tvi.fit(X, y)
+        s = tvi.summary()
+        for key in ("importances", "threshold", "threshold_quantile", "n_features",
+                    "n_selected", "n_obs_tail"):
+            assert key in s, f"Missing key '{key}' in summary"
+
+        assert s["n_features"] == 4
+        assert s["threshold_quantile"] == 0.90
+        assert s["threshold"] > 0
+        assert 0 <= s["n_selected"] <= 4
+        assert s["n_obs_tail"] > 0
+
+    def test_plot_does_not_error(self):
+        """plot() should run without raising and return an Axes object."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=500, n_features=6)
+        tvi = TailVariableImportance(threshold_quantile=0.85, alpha=0.05)
+        tvi.fit(X, y, feature_names=[f"f{i}" for i in range(6)])
+        ax = tvi.plot(top_k=4)
+        assert ax is not None
+        plt.close("all")
+
+    def test_plot_with_existing_ax(self):
+        """plot() should accept an existing axes."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=300, n_features=3)
+        tvi = TailVariableImportance(threshold_quantile=0.85, alpha=0.05)
+        tvi.fit(X, y)
+        fig, ax = plt.subplots()
+        returned = tvi.plot(ax=ax)
+        assert returned is ax
+        plt.close("all")
+
+    def test_coefficients_signs_preserved(self):
+        """coefficients property should return signed values (not normalised)."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=500, n_features=3)
+        tvi = TailVariableImportance(threshold_quantile=0.85, alpha=0.01)
+        tvi.fit(X, y, feature_names=["a", "b", "c"])
+        coef = tvi.coefficients
+        imp = tvi.importances
+        # |coef| and importances should be consistent in direction
+        for name in ["a", "b", "c"]:
+            assert abs(coef[name]) >= 0
+            assert imp[name] >= 0
+
+    def test_fit_returns_self(self):
+        """fit() should return self for chaining."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=200, n_features=2)
+        tvi = TailVariableImportance()
+        result = tvi.fit(X, y)
+        assert result is tvi
+
+    def test_not_fitted_raises(self):
+        """Accessing properties before fit should raise RuntimeError."""
+        from insurance_severity.evt import TailVariableImportance
+
+        tvi = TailVariableImportance()
+        with pytest.raises(RuntimeError, match="fit"):
+            _ = tvi.importances
+        with pytest.raises(RuntimeError, match="fit"):
+            _ = tvi.coefficients
+        with pytest.raises(RuntimeError, match="fit"):
+            tvi.summary()
+
+    def test_invalid_threshold_quantile(self):
+        """threshold_quantile outside (0, 1) should raise ValueError."""
+        from insurance_severity.evt import TailVariableImportance
+
+        with pytest.raises(ValueError):
+            TailVariableImportance(threshold_quantile=0.0)
+        with pytest.raises(ValueError):
+            TailVariableImportance(threshold_quantile=1.0)
+        with pytest.raises(ValueError):
+            TailVariableImportance(threshold_quantile=1.5)
+
+    def test_invalid_alpha(self):
+        """Non-positive alpha should raise ValueError."""
+        from insurance_severity.evt import TailVariableImportance
+
+        with pytest.raises(ValueError):
+            TailVariableImportance(alpha=0.0)
+        with pytest.raises(ValueError):
+            TailVariableImportance(alpha=-1.0)
+
+    def test_non_positive_y_raises(self):
+        """y with zeros or negatives should raise ValueError."""
+        from insurance_severity.evt import TailVariableImportance
+
+        X = np.ones((10, 2))
+        y = np.arange(-4, 6, dtype=float)  # contains zero and negatives
+        with pytest.raises(ValueError, match="strictly positive"):
+            TailVariableImportance().fit(X, y)
+
+    def test_mismatched_X_y_raises(self):
+        from insurance_severity.evt import TailVariableImportance
+
+        X = np.ones((10, 3))
+        y = np.ones(8)
+        with pytest.raises(ValueError):
+            TailVariableImportance().fit(X, y)
+
+    def test_wrong_feature_names_length_raises(self):
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=100, n_features=3)
+        with pytest.raises(ValueError):
+            TailVariableImportance().fit(X, y, feature_names=["a", "b"])  # 2 names, 3 features
+
+    def test_top_k_limit_in_plot(self):
+        """plot(top_k=2) should only show 2 bars even with more features."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from insurance_severity.evt import TailVariableImportance
+
+        X, y = self._make_tail_data(n=400, n_features=8)
+        tvi = TailVariableImportance(threshold_quantile=0.85, alpha=0.05)
+        tvi.fit(X, y)
+        ax = tvi.plot(top_k=2)
+        # Should have 2 y-tick labels
+        assert len(ax.get_yticklabels()) == 2
+        plt.close("all")

@@ -1,7 +1,7 @@
 """
 EVT (Extreme Value Theory) classes for truncated and censored insurance claims.
 
-Three classes address the most common data quality issues in large-loss modelling:
+Four classes address the most common challenges in large-loss modelling:
 
 - TruncatedGPD: GPD fitted via truncated MLE, correcting for upper truncation
   at policy limits. Essential when you have heterogeneous per-policy limits.
@@ -12,7 +12,14 @@ Three classes address the most common data quality issues in large-loss modellin
 - WeibullTemperedPareto: Survival function S(x) = x^{-alpha} * exp(-lambda * x^tau).
   For tails that are heavy but physically bounded (property, D&O, PI).
 
-Reference: Albrecher, Beirlant & Teugels (2025), arXiv:2511.22272
+- TailVariableImportance: Identifies which covariates drive extreme claims using
+  adapted lasso with tail-weighted residuals (arXiv:2504.06984). Standard Gini/SHAP
+  importance reflects bulk behaviour; this isolates what matters above the 90th+ percentile.
+
+References
+----------
+Albrecher, Beirlant & Teugels (2025), arXiv:2511.22272
+arXiv:2504.06984 — Tail Variable Importance for Extreme Value Analysis
 """
 
 from __future__ import annotations
@@ -734,3 +741,258 @@ class WeibullTemperedPareto:
             "xi": self.xi,
             "threshold": self.threshold,
         }
+
+
+# ---------------------------------------------------------------------------
+# TailVariableImportance
+# ---------------------------------------------------------------------------
+
+
+class TailVariableImportance:
+    """
+    EVT-based variable importance for extreme claims.
+
+    Identifies which covariates drive tail behaviour using adapted lasso
+    with tail-weighted residuals. Standard ML importance (Gini, SHAP) reflects
+    bulk behaviour — this class isolates what matters for the 99th+ percentile.
+
+    The method follows arXiv:2504.06984. Observations above a POT threshold
+    receive weight proportional to their excess over the threshold; observations
+    below are downweighted to zero. A lasso regression on the log-transformed
+    claim amounts is then fitted under these weights. Absolute coefficients
+    (normalised to sum to 1) give the tail importance ranking.
+
+    Parameters
+    ----------
+    threshold_quantile : float, default 0.90
+        Quantile above which claims are considered extreme. Claims below this
+        are downweighted; claims above get weight proportional to their extremity.
+    alpha : float, default 1.0
+        Lasso regularisation strength. Higher = sparser feature selection.
+
+    References
+    ----------
+    arXiv:2504.06984 — "Tail Variable Importance for Extreme Value Analysis"
+    """
+
+    def __init__(self, threshold_quantile: float = 0.90, alpha: float = 1.0) -> None:
+        if not 0.0 < threshold_quantile < 1.0:
+            raise ValueError(
+                f"threshold_quantile must be in (0, 1), got {threshold_quantile}"
+            )
+        if alpha <= 0:
+            raise ValueError(f"alpha must be positive, got {alpha}")
+        self.threshold_quantile = float(threshold_quantile)
+        self.alpha = float(alpha)
+
+        # Set after fit()
+        self._feature_names: list[str] | None = None
+        self._coef: np.ndarray | None = None
+        self._threshold: float | None = None
+        self._n_features: int | None = None
+        self._n_selected: int | None = None
+        self._n_obs_tail: int | None = None
+
+    # ------------------------------------------------------------------
+    # Fit
+    # ------------------------------------------------------------------
+
+    def fit(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        feature_names: list[str] | None = None,
+    ) -> "TailVariableImportance":
+        """
+        Fit tail-weighted lasso to identify extreme-claim drivers.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            Covariate matrix.
+        y : array-like, shape (n_samples,)
+            Claim amounts (strictly positive).
+        feature_names : list of str, optional
+            Names for each feature. If None, uses ["x0", "x1", ...].
+
+        Returns
+        -------
+        self
+        """
+        from sklearn.linear_model import Lasso
+        from sklearn.preprocessing import StandardScaler
+
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float)
+
+        if X.ndim != 2:
+            raise ValueError(f"X must be 2-D, got shape {X.shape}")
+        if y.ndim != 1:
+            raise ValueError(f"y must be 1-D, got shape {y.shape}")
+        if len(X) != len(y):
+            raise ValueError(
+                f"X and y must have the same number of rows: {len(X)} vs {len(y)}"
+            )
+        if np.any(y <= 0):
+            raise ValueError(
+                f"y must be strictly positive (got {int(np.sum(y <= 0))} non-positive values)"
+            )
+
+        n_samples, n_features = X.shape
+
+        # Default feature names
+        if feature_names is None:
+            names = [f"x{i}" for i in range(n_features)]
+        else:
+            if len(feature_names) != n_features:
+                raise ValueError(
+                    f"feature_names length {len(feature_names)} != n_features {n_features}"
+                )
+            names = list(feature_names)
+
+        # Step 1: threshold
+        threshold = float(np.quantile(y, self.threshold_quantile))
+        self._threshold = threshold
+
+        # Step 2: tail weights — excess over threshold, zero below
+        excess = np.maximum(0.0, y - threshold)
+        n_tail = int(np.sum(excess > 0))
+        if n_tail == 0:
+            raise RuntimeError(
+                "No observations above the threshold. Lower threshold_quantile."
+            )
+
+        # Normalise so weights sum to n_samples
+        w_sum = np.sum(excess)
+        weights = excess * (n_samples / w_sum)
+
+        # Step 3: standardise X and log-transform y (heavy tails → log scale)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        log_y = np.log(y)
+
+        # Step 4: weighted lasso
+        lasso = Lasso(alpha=self.alpha, fit_intercept=True, max_iter=10_000)
+        lasso.fit(X_scaled, log_y, sample_weight=weights)
+
+        coef = lasso.coef_.copy()  # shape (n_features,)
+
+        # Step 5: normalise absolute values to importances
+        abs_coef = np.abs(coef)
+        total = abs_coef.sum()
+        if total < 1e-12:
+            # All coefficients zeroed — uniform importance
+            warnings.warn(
+                "All lasso coefficients are zero; alpha may be too high. "
+                "Returning uniform importance.",
+                stacklevel=2,
+            )
+            importances = np.ones(n_features) / n_features
+        else:
+            importances = abs_coef / total
+
+        self._feature_names = names
+        self._coef = coef
+        self._importances = importances
+        self._n_features = n_features
+        self._n_selected = int(np.sum(abs_coef > 0))
+        self._n_obs_tail = n_tail
+
+        return self
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
+
+    def _check_fitted(self) -> None:
+        if self._coef is None:
+            raise RuntimeError("Call fit() first")
+
+    @property
+    def importances(self) -> dict[str, float]:
+        """Feature name -> absolute lasso coefficient, normalised to sum to 1."""
+        self._check_fitted()
+        return dict(zip(self._feature_names, self._importances.tolist()))
+
+    @property
+    def coefficients(self) -> dict[str, float]:
+        """Feature name -> signed lasso coefficient (on standardised X, log y scale)."""
+        self._check_fitted()
+        return dict(zip(self._feature_names, self._coef.tolist()))
+
+    # ------------------------------------------------------------------
+    # Summary / diagnostics
+    # ------------------------------------------------------------------
+
+    def summary(self) -> dict:
+        """
+        Return a summary dict with importances, threshold, and selection stats.
+
+        Keys
+        ----
+        importances : dict[str, float]
+            Feature -> tail importance (sums to 1).
+        threshold : float
+            Absolute claim threshold derived from threshold_quantile.
+        threshold_quantile : float
+            The quantile parameter used.
+        n_features : int
+            Total number of input features.
+        n_selected : int
+            Features with non-zero lasso coefficient.
+        n_obs_tail : int
+            Number of observations above threshold (had positive weight).
+        """
+        self._check_fitted()
+        return {
+            "importances": self.importances,
+            "threshold": self._threshold,
+            "threshold_quantile": self.threshold_quantile,
+            "n_features": self._n_features,
+            "n_selected": self._n_selected,
+            "n_obs_tail": self._n_obs_tail,
+        }
+
+    # ------------------------------------------------------------------
+    # Plot
+    # ------------------------------------------------------------------
+
+    def plot(self, ax=None, top_k: int = 15):
+        """
+        Horizontal bar chart of top-k tail-important features.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            If None, creates a new figure.
+        top_k : int
+            Number of features to display (sorted by importance descending).
+
+        Returns
+        -------
+        ax
+        """
+        import matplotlib.pyplot as plt
+
+        self._check_fitted()
+
+        imp = self.importances
+        sorted_items = sorted(imp.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+        names, vals = zip(*sorted_items) if sorted_items else ([], [])
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(7, max(3, len(names) * 0.4)))
+
+        y_pos = np.arange(len(names))
+        ax.barh(y_pos, vals, color="steelblue", edgecolor="white")
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(names)
+        ax.invert_yaxis()  # most important at top
+        ax.set_xlabel("Tail importance (normalised)")
+        ax.set_title(
+            f"Tail variable importance (threshold q={self.threshold_quantile:.0%}, "
+            f"alpha={self.alpha})"
+        )
+        ax.axvline(1.0 / len(imp), color="tomato", ls="--", lw=1.0, label="Uniform baseline")
+        ax.legend(fontsize=8)
+        return ax
