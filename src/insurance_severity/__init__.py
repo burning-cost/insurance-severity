@@ -1,7 +1,7 @@
 """
 insurance-severity: comprehensive severity modelling for insurance pricing.
 
-Combines three complementary approaches:
+Combines four complementary approaches:
 
 1. **Composite (spliced) models** — insurance_severity.composite
    Body/tail splice with covariate-dependent thresholds, mode-matching,
@@ -17,6 +17,12 @@ Combines three complementary approaches:
    Truncated GPD MLE (policy limits), censoring-corrected Hill estimator
    (IBNR), and Weibull-tempered Pareto (bounded tails). For when standard
    GPD gives biased estimates because your data has truncation or censoring.
+
+4. **Mixture Density Network** — insurance_severity.mdn
+   Lognormal mixture model with neural network-parameterised mixing weights,
+   means, and scales. For when the severity distribution is genuinely
+   multimodal — the case for escape-of-water and other multi-phase perils.
+   Requires PyTorch: ``pip install insurance-severity[mdn]``.
 
 Quick start — composite:
 
@@ -55,6 +61,16 @@ Quick start — tail variable importance:
 >>> tvi.importances          # dict: feature -> tail importance
 >>> tvi.summary()            # threshold, n_selected, etc.
 >>> tvi.plot(top_k=10)       # horizontal bar chart
+
+Quick start — MDN:
+
+>>> from insurance_severity import MDN
+>>> mdn = MDN(n_components=3, hidden_size=64, max_epochs=200)
+>>> mdn.fit(X_train, y_train)
+>>> dist = mdn.predict_distribution(X_test)
+>>> dist.mean()              # expected severity per observation
+>>> dist.quantile(0.995)     # tail quantile
+>>> dist.ilf(50_000, 10_000) # increased limits factors
 """
 
 # Composite subpackage
@@ -94,6 +110,25 @@ try:
 except ImportError:
     # torch not installed; DRN classes not available at top level.
     # Install with: pip install insurance-severity[drn]
+    pass
+
+# MDN subpackage — lazy import, also requires torch.
+# Use: pip install insurance-severity[mdn]
+# Then: from insurance_severity.mdn import MDN
+try:
+    from insurance_severity.mdn import (
+        MDN,
+        MDNMixture,
+        MDNNetwork,
+        mdn_nll_loss,
+        mdn_log_prob,
+        mixture_mean,
+        mixture_quantile,
+        mixture_cdf,
+    )
+except ImportError:
+    # torch not installed; MDN classes not available at top level.
+    # Install with: pip install insurance-severity[mdn]
     pass
 
 # EVT subpackage
@@ -138,6 +173,15 @@ __all__ = [
     "drn_cutpoints",
     "jbce_loss",
     "drn_regularisation",
+    # MDN
+    "MDN",
+    "MDNMixture",
+    "MDNNetwork",
+    "mdn_nll_loss",
+    "mdn_log_prob",
+    "mixture_mean",
+    "mixture_quantile",
+    "mixture_cdf",
     # EVT
     "TruncatedGPD",
     "CensoredHillEstimator",
