@@ -549,6 +549,170 @@ class ExtendedHistogramBatch:
         results = _trapz(integrand, y_grid, axis=1)
         return results
 
+
+    # ------------------------------------------------------------------
+    # twCRPS (threshold-weighted CRPS)
+    # ------------------------------------------------------------------
+
+    def tw_crps(self, y_true: np.ndarray, threshold: float) -> np.ndarray:
+        """
+        Threshold-weighted CRPS (twCRPS) at a given threshold.
+
+        twCRPS_t(F, y) = integral_{threshold}^{inf} (F(y) - 1(y >= y_true))^2 dy
+
+        This is the standard CRPS but with integration starting at *threshold*
+        rather than -infinity. It gives a score that focuses only on the tail
+        above the threshold — useful for evaluating large-loss calibration
+        without the attritional body dominating.
+
+        When threshold == 0 (or any value <= c_0), the result equals the
+        standard CRPS (up to the negligible left-tail contribution, which
+        the standard crps() method also treats as zero for insurance data).
+
+        The computation is analytical over histogram bins, following the same
+        piecewise-linear logic as crps(). Bins entirely below threshold are
+        skipped. Bins straddling the threshold are split: only the upper part
+        [threshold, c_hi) is integrated.
+
+        Parameters
+        ----------
+        y_true : np.ndarray, shape (n,)
+            Observed actuals.
+        threshold : float
+            Integration lower bound. Values below threshold are not scored.
+
+        Returns
+        -------
+        np.ndarray, shape (n,)
+
+        Warns
+        -----
+        UserWarning
+            If any y_true > max cutpoint (c_K). The DRN histogram has finite
+            support; the right-tail contribution is numerical and may
+            underestimate the score for extreme actuals.
+        """
+        import warnings
+
+        y_true = np.asarray(y_true, dtype=np.float64)
+
+        if np.any(y_true > self.c_K):
+            warnings.warn(
+                f"Some y_true values exceed the maximum cutpoint c_K={self.c_K:.2f}. "
+                "The DRN histogram has finite support; twCRPS may be underestimated "
+                "for these observations because the right-tail numerical integration "
+                "uses a finite upper bound.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Evaluate CDF at all cutpoints: shape (n, K+1)
+        cdf_at_cuts = self.cdf(self.cutpoints)  # (n, K+1)
+
+        tw_crps_vals = np.zeros(self.n, dtype=np.float64)
+
+        for k in range(self.K):
+            c_lo = self.cutpoints[k]
+            c_hi = self.cutpoints[k + 1]
+            w = c_hi - c_lo
+            if w == 0:
+                continue
+
+            # Skip bins entirely below threshold
+            if c_hi <= threshold:
+                continue
+
+            F_lo_full = cdf_at_cuts[:, k]      # (n,)
+            F_hi = cdf_at_cuts[:, k + 1]  # (n,)
+
+            # Determine effective lower bound of integration for this bin
+            if c_lo < threshold:
+                # Bin straddles threshold — split at threshold
+                # Compute F(threshold) via linear interpolation
+                slope = (F_hi - F_lo_full) / w
+                F_thresh = F_lo_full + slope * (threshold - c_lo)
+                eff_lo = threshold
+                F_lo = F_thresh
+            else:
+                eff_lo = c_lo
+                F_lo = F_lo_full
+
+            eff_w = c_hi - eff_lo
+            if eff_w <= 0:
+                continue
+
+            # Case A: y_true < eff_lo → all of [eff_lo, c_hi] has y >= y_true → indicator=1
+            # Integrand = (F - 1)^2
+            mask_a = y_true < eff_lo
+            G_lo = F_lo - 1.0
+            G_hi = F_hi - 1.0
+            contrib_a = eff_w * (G_lo ** 2 + G_lo * G_hi + G_hi ** 2) / 3.0
+            tw_crps_vals += np.where(mask_a, contrib_a, 0.0)
+
+            # Case B: y_true >= c_hi → all of [eff_lo, c_hi] has y < y_true → indicator=0
+            # Integrand = F^2
+            mask_b = y_true >= c_hi
+            contrib_b = eff_w * (F_lo ** 2 + F_lo * F_hi + F_hi ** 2) / 3.0
+            tw_crps_vals += np.where(mask_b, contrib_b, 0.0)
+
+            # Case C: y_true in [eff_lo, c_hi) — split at y_true
+            mask_c = (~mask_a) & (~mask_b)
+            if mask_c.any():
+                yt_c = y_true[mask_c]
+                F_lo_c = F_lo[mask_c]
+                F_hi_c = F_hi[mask_c]
+                slope_c = (F_hi_c - F_lo_c) / eff_w
+
+                # F at y_true (y_true is in [eff_lo, c_hi))
+                F_yt = F_lo_c + slope_c * (yt_c - eff_lo)
+
+                # Left sub-interval [eff_lo, y_true]: y < y_true → indicator=0 → F^2
+                w1 = yt_c - eff_lo
+                i1 = w1 * (F_lo_c ** 2 + F_lo_c * F_yt + F_yt ** 2) / 3.0
+
+                # Right sub-interval [y_true, c_hi]: y >= y_true → indicator=1 → (F-1)^2
+                w2 = c_hi - yt_c
+                G2_lo = F_yt - 1.0
+                G2_hi = F_hi_c - 1.0
+                i2 = w2 * (G2_lo ** 2 + G2_lo * G2_hi + G2_hi ** 2) / 3.0
+
+                tw_crps_vals[mask_c] += i1 + i2
+
+        # Right-tail contribution: integrate from max(c_K, threshold) upwards
+        tw_crps_vals += self._tw_crps_right_tail(y_true, threshold)
+
+        return tw_crps_vals
+
+    def _tw_crps_right_tail(
+        self, y_true: np.ndarray, threshold: float, n_points: int = 20
+    ) -> np.ndarray:
+        """twCRPS contribution from right tail y > c_K, respecting threshold."""
+        mu = self.baseline_params["mu"]
+        disp = self.baseline_params["dispersion"]
+
+        # Integration starts from max(c_K, threshold)
+        y_start = max(float(self.c_K), float(threshold))
+
+        if self.distribution_family == "gamma":
+            alpha = 1.0 / disp
+            avg_mu = float(np.mean(mu))
+            avg_scale = avg_mu * disp
+            y_upper = stats.gamma.ppf(0.9999, a=alpha, scale=avg_scale)
+        else:
+            y_upper = self.c_K * 5.0
+
+        if y_start >= y_upper:
+            return np.zeros(self.n, dtype=np.float64)
+
+        y_grid = np.linspace(y_start, y_upper, n_points)   # (n_points,)
+        cdf_grid = self.cdf(y_grid)                          # (n, n_points)
+        # indicator = 1 when integration variable y_grid >= y_true
+        indicator = (y_grid[np.newaxis, :] >= y_true[:, np.newaxis]).astype(float)
+
+        integrand = (cdf_grid - indicator) ** 2
+        results = _trapz(integrand, y_grid, axis=1)
+        return results
+
     # ------------------------------------------------------------------
     # Expected Shortfall (Tail VaR)
     # ------------------------------------------------------------------

@@ -289,6 +289,123 @@ class DRNDiagnostics:
         return pl.DataFrame(rows).sort("mean_crps", descending=True)
 
     # ------------------------------------------------------------------
+    # Tail calibration and twCRPS profile
+    # ------------------------------------------------------------------
+
+    def tail_calibration(
+        self,
+        X,
+        y,
+        threshold_quantiles: list[float] | None = None,
+    ) -> dict:
+        """
+        Allen et al. (2025) tail calibration diagnostics for DRN predictions.
+
+        Uses TailCalibration from tail_scoring to check whether the DRN is
+        calibrated in the tail — both occurrence calibration (does the model
+        get exceedance probabilities right?) and severity calibration (does the
+        conditional excess distribution have the right shape?).
+
+        The CDF function passed to TailCalibration is constructed as:
+            cdf_func(t) -> batch.cdf(np.full(n, t))
+        which evaluates each observation's individual predictive CDF at the
+        scalar threshold t.
+
+        Parameters
+        ----------
+        X : pd.DataFrame or np.ndarray
+        y : np.ndarray, shape (n,)
+        threshold_quantiles : list of float, optional
+            Empirical quantile levels used to derive thresholds t.
+            Defaults to [0.80, 0.90, 0.95, 0.99].
+
+        Returns
+        -------
+        dict with keys:
+            - 'summary': pd.DataFrame from TailCalibration.summary_table
+            - 'occurrence_ratios': dict mapping threshold -> R_occ
+            - 'pit_data': dict mapping threshold -> np.ndarray of conditional excess PITs
+        """
+        from insurance_severity.tail_scoring import TailCalibration
+
+        if threshold_quantiles is None:
+            threshold_quantiles = [0.80, 0.90, 0.95, 0.99]
+
+        y_arr = np.asarray(y, dtype=np.float64)
+        n = len(y_arr)
+        batch = self.drn.predict_distribution(X)
+
+        # Build cdf_func: cdf_func(t) returns (n,) of F_i(t)
+        def cdf_func(t: float) -> np.ndarray:
+            return batch.cdf(np.full(n, float(t)))
+
+        tc = TailCalibration(cdf_func=cdf_func, n_obs=n)
+        tc.fit(y_arr)
+
+        t_levels = np.quantile(y_arr, threshold_quantiles)
+        summary_df = tc.summary_table(t_levels)
+
+        occurrence_ratios = {
+            float(t): tc.occurrence_ratio(float(t))
+            for t in t_levels
+        }
+        pit_data = {
+            float(t): tc.severity_pit(float(t))
+            for t in t_levels
+        }
+
+        return {
+            "summary": summary_df,
+            "occurrence_ratios": occurrence_ratios,
+            "pit_data": pit_data,
+        }
+
+    def tw_crps_profile(
+        self,
+        X,
+        y,
+        threshold_quantiles: list[float] | None = None,
+    ) -> dict[float, float]:
+        """
+        Threshold-weighted CRPS profile across a range of tail thresholds.
+
+        Computes the analytical twCRPS at each threshold derived from the
+        requested empirical quantile levels. The profile shows how much of
+        the CRPS improvement (or degradation) is concentrated in the tail
+        vs the body. A model with good tail calibration should show lower
+        twCRPS relative to its CRPS at high threshold quantiles.
+
+        Uses ExtendedHistogramBatch.tw_crps() for analytical integration —
+        no Monte Carlo required.
+
+        Parameters
+        ----------
+        X : pd.DataFrame or np.ndarray
+        y : np.ndarray, shape (n,)
+        threshold_quantiles : list of float, optional
+            Empirical quantile levels used to derive thresholds.
+            Defaults to [0.75, 0.85, 0.90, 0.95, 0.99].
+
+        Returns
+        -------
+        dict mapping float threshold -> float mean twCRPS
+            Keys are actual threshold values (not quantile levels).
+        """
+        if threshold_quantiles is None:
+            threshold_quantiles = [0.75, 0.85, 0.90, 0.95, 0.99]
+
+        y_arr = np.asarray(y, dtype=np.float64)
+        batch = self.drn.predict_distribution(X)
+
+        t_levels = np.quantile(y_arr, threshold_quantiles)
+        profile = {}
+        for t in t_levels:
+            tw = batch.tw_crps(y_arr, float(t))
+            profile[float(t)] = float(np.mean(tw))
+
+        return profile
+
+    # ------------------------------------------------------------------
     # Summary report
     # ------------------------------------------------------------------
 
