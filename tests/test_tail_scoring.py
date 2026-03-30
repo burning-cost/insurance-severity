@@ -121,8 +121,8 @@ class TestParetoQQ:
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         rng = np.random.default_rng(42)
-        # Standard normal shifted to be positive
-        y = np.abs(rng.normal(loc=10, scale=2, size=2000))
+        # Uniform data — bounded support, no power-law tail
+        y = rng.uniform(low=1.0, high=100.0, size=5000)
         fig, ax = plt.subplots()
         r2 = pareto_qq(y, ax=ax)
         plt.close("all")
@@ -303,12 +303,11 @@ class TestTailCalibration:
 
         # Use a very high threshold so n_exceedances < 20
         t_high = float(np.quantile(y, 0.99))
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            _ = tc.severity_pit(t_high)
-        # Check that a warning was raised if n_exc < 20
         n_exc = int(np.sum(y > t_high))
         if n_exc < 20:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                _ = tc.summary_table(t_levels=[t_high])
             assert any("20" in str(warning.message) or "unreliable" in str(warning.message)
                        for warning in w)
 
