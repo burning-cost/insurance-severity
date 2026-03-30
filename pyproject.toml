@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-severity"
-version = "0.3.0"
-description = "Insurance severity modelling: composite models, DRN, EVT, and Mixture Density Networks"
+version = "0.3.1"
+description = "Insurance severity modelling: composite models, DRN, EVT, MDN, and tail scoring"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

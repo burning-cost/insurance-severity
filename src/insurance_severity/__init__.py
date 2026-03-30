@@ -1,7 +1,7 @@
 """
 insurance-severity: comprehensive severity modelling for insurance pricing.
 
-Combines four complementary approaches:
+Combines five complementary approaches:
 
 1. **Composite (spliced) models** — insurance_severity.composite
    Body/tail splice with covariate-dependent thresholds, mode-matching,
@@ -23,6 +23,12 @@ Combines four complementary approaches:
    means, and scales. For when the severity distribution is genuinely
    multimodal — the case for escape-of-water and other multi-phase perils.
    Requires PyTorch: ``pip install insurance-severity[mdn]``.
+
+5. **Tail scoring** — insurance_severity.tail_scoring
+   Allen et al. (2025, JASA) tail calibration diagnostics (all EVT domains)
+   and Bladt & Øhlenschlæger (2026) tail log-score for Pareto-family model
+   ranking (Fréchet domain). For when you need to know whether your model is
+   calibrated in the tail, and which of several large-loss models fits best.
 
 Quick start — composite:
 
@@ -71,6 +77,19 @@ Quick start — MDN:
 >>> dist.mean()              # expected severity per observation
 >>> dist.quantile(0.995)     # tail quantile
 >>> dist.ilf(50_000, 10_000) # increased limits factors
+
+Quick start — tail calibration and scoring:
+
+>>> from insurance_severity import TailCalibration, BladtTailScore, pareto_qq
+>>> # Confirm Fréchet domain:
+>>> r2 = pareto_qq(y, ax=ax)  # R² > 0.95 suggests Fréchet
+>>> # Check model calibration in the tail:
+>>> tc = TailCalibration(cdf_func=my_model.cdf, n_obs=len(y))
+>>> tc.fit(y)
+>>> tc.summary_table(t_levels=np.quantile(y, [0.90, 0.95, 0.99]))
+>>> # Rank competing tail index specifications:
+>>> bs = BladtTailScore()
+>>> bs.rank(y, gamma_candidates=[0.5, 0.8, 1.0, 1.3], k_grid=np.arange(20, 200))
 """
 
 # Composite subpackage
@@ -139,6 +158,13 @@ from insurance_severity.evt import (
     TailVariableImportance,
 )
 
+# Tail scoring
+from insurance_severity.tail_scoring import (
+    TailCalibration,
+    BladtTailScore,
+    pareto_qq,
+)
+
 from importlib.metadata import version, PackageNotFoundError
 
 try:
@@ -187,4 +213,8 @@ __all__ = [
     "CensoredHillEstimator",
     "WeibullTemperedPareto",
     "TailVariableImportance",
+    # Tail scoring
+    "TailCalibration",
+    "BladtTailScore",
+    "pareto_qq",
 ]
