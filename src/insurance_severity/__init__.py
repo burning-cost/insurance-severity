@@ -1,7 +1,7 @@
 """
 insurance-severity: comprehensive severity modelling for insurance pricing.
 
-Combines five complementary approaches:
+Combines six complementary approaches:
 
 1. **Composite (spliced) models** — insurance_severity.composite
    Body/tail splice with covariate-dependent thresholds, mode-matching,
@@ -29,6 +29,12 @@ Combines five complementary approaches:
    and Bladt & Øhlenschlæger (2026) tail log-score for Pareto-family model
    ranking (Fréchet domain). For when you need to know whether your model is
    calibrated in the tail, and which of several large-loss models fits best.
+
+6. **Projection-to-Ultimate** — insurance_severity.projection
+   One-shot PtU factor estimation for RBNS claims (Richman & Wüthrich,
+   arXiv:2603.11660). OLS/Ridge regression of log(ultimate/paid) on
+   development features. Empirically outperforms neural networks on
+   realistic reserving triangle sizes.
 
 Quick start — composite:
 
@@ -90,6 +96,17 @@ Quick start — tail calibration and scoring:
 >>> # Rank competing tail index specifications:
 >>> bs = BladtTailScore()
 >>> bs.rank(y, gamma_candidates=[0.5, 0.8, 1.0, 1.3], k_grid=np.arange(20, 200))
+
+Quick start — Projection-to-Ultimate:
+
+>>> from insurance_severity import ProjectionToUltimate
+>>> ptu = ProjectionToUltimate(
+...     development_features=["dev_month", "log_paid", "claim_age"],
+...     method="ols",
+... )
+>>> ptu.fit(train_df, paid_col="paid_to_date", ultimate_col="ultimate_cost")
+>>> preds = ptu.predict(open_claims_df)
+>>> ptu.summary()  # R², coefficients, residual diagnostics
 """
 
 # Composite subpackage
@@ -165,6 +182,9 @@ from insurance_severity.tail_scoring import (
     pareto_qq,
 )
 
+# Projection-to-Ultimate
+from insurance_severity.projection import ProjectionToUltimate
+
 from importlib.metadata import version, PackageNotFoundError
 
 try:
@@ -217,4 +237,6 @@ __all__ = [
     "TailCalibration",
     "BladtTailScore",
     "pareto_qq",
+    # Projection-to-Ultimate
+    "ProjectionToUltimate",
 ]

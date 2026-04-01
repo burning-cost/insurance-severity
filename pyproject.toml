@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-severity"
-version = "0.3.1"
-description = "Insurance severity modelling: composite models, DRN, EVT, MDN, and tail scoring"
+version = "0.3.2"
+description = "Insurance severity modelling: composite models, DRN, EVT, MDN, tail scoring, and Projection-to-Ultimate"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -31,6 +31,10 @@ keywords = [
     "solvency-ii",
     "histogram",
     "multimodal",
+    "projection-to-ultimate",
+    "ptu",
+    "reserving",
+    "rbns",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
