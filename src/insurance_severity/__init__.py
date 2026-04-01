@@ -24,13 +24,20 @@ Combines six complementary approaches:
    multimodal — the case for escape-of-water and other multi-phase perils.
    Requires PyTorch: ``pip install insurance-severity[mdn]``.
 
-5. **Tail scoring** — insurance_severity.tail_scoring
+5. **SPQRx** — insurance_severity.spqrx
+   Semi-parametric M-spline bulk density blended with a covariate-conditional
+   GPD tail (Majumder & Richards, arXiv:2504.19994). For when you need ILF
+   curves and extreme quantiles (Q99+) beyond the training data range, with
+   a threshold that automatically varies by risk characteristics.
+   Requires PyTorch: pip install insurance-severity[spqrx].
+
+6. **Tail scoring** — insurance_severity.tail_scoring
    Allen et al. (2025, JASA) tail calibration diagnostics (all EVT domains)
    and Bladt & Øhlenschlæger (2026) tail log-score for Pareto-family model
    ranking (Fréchet domain). For when you need to know whether your model is
    calibrated in the tail, and which of several large-loss models fits best.
 
-6. **Projection-to-Ultimate** — insurance_severity.projection
+7. **Projection-to-Ultimate** — insurance_severity.projection
    One-shot PtU factor estimation for RBNS claims (Richman & Wüthrich,
    arXiv:2603.11660). OLS/Ridge regression of log(ultimate/paid) on
    development features. Empirically outperforms neural networks on
@@ -167,6 +174,23 @@ except ImportError:
     # Install with: pip install insurance-severity[mdn]
     pass
 
+
+# SPQRx subpackage — lazy import, also requires torch.
+# Use: pip install insurance-severity[spqrx]
+# Then: from insurance_severity.spqrx import SPQRxSeverity
+try:
+    from insurance_severity.spqrx import (
+        SPQRxSeverity,
+        SPQRxDistribution,
+        SPQRxNetwork,
+        make_mspline_basis,
+        solve_bgpd_params,
+    )
+except ImportError:
+    # torch not installed; SPQRx classes not available at top level.
+    # Install with: pip install insurance-severity[spqrx]
+    pass
+
 # EVT subpackage
 from insurance_severity.evt import (
     TruncatedGPD,
@@ -237,6 +261,12 @@ __all__ = [
     "TailCalibration",
     "BladtTailScore",
     "pareto_qq",
+    # SPQRx
+    "SPQRxSeverity",
+    "SPQRxDistribution",
+    "SPQRxNetwork",
+    "make_mspline_basis",
+    "solve_bgpd_params",
     # Projection-to-Ultimate
     "ProjectionToUltimate",
 ]
