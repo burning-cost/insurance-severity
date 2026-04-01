@@ -371,6 +371,7 @@ class TestEdgeCases:
 
     def test_polars_input_required(self):
         """Passing a non-Polars object should raise TypeError."""
+        pytest.importorskip("pyarrow")
         import pandas as pd
         df = _make_train_df()
         ptu = ProjectionToUltimate()
