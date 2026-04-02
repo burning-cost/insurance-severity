@@ -214,6 +214,37 @@ All three classes expose `pdf`, `cdf`, `ppf`, `rvs` where appropriate, a `xi` pr
 
 **When to use:** XL reinsurance where the cession data is limit-censored; reserving triangles where large claims are IBNR-censored; any context where naively fitting a GPD to the observed data would produce a biased tail index because not all large losses are visible in the data at valuation.
 
+### `insurance_severity.reserving` — doubly-robust IBNR reserving
+
+`PopulationSamplingReserve` reframes IBNR reserving as a population sampling problem (Calcetero, Badescu, Lin 2025, arXiv:2502.15598). Each reported claim is a Bernoulli trial with inclusion probability π̂ᵢ — the probability that the claim was reported by valuation time given its accident date. The AIPW estimator combines a micro-level severity model with IPW-weighted residuals, giving double robustness: the reserve is consistent if *either* the inclusion model or the severity model is correctly specified.
+
+The chain-ladder emerges as a special case when inclusion probabilities equal 1/f_k (inverse development factors).
+
+```python
+import numpy as np
+import pandas as pd
+from insurance_severity.reserving import PopulationSamplingReserve
+
+rng = np.random.default_rng(42)
+n = 500
+
+# Reported UK motor claims at valuation date
+claims = pd.DataFrame({
+    "accident_time": rng.uniform(0.0, 1.5, n),
+    "report_time":   rng.uniform(0.0, 2.0, n),
+    "severity":      rng.lognormal(mean=8.0, sigma=1.2, size=n),
+})
+# Ensure report_time >= accident_time
+claims["report_time"] = claims["accident_time"] + rng.exponential(0.3, n)
+
+reserve = PopulationSamplingReserve(method="aipw")
+reserve.fit(claims, valuation_time=2.0)
+
+print(f"IBNR estimate: £{reserve.ibnr_:,.0f}")
+print(f"Ultimate:      £{reserve.ultimate_:,.0f}")
+print(reserve.diagnostics())
+```
+
 ## Installation
 
 ```bash
