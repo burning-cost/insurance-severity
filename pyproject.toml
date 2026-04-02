@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "insurance-severity"
-version = "0.3.3"
-description = "Insurance severity modelling: composite models, DRN, EVT, MDN, SPQRx, tail scoring, and Projection-to-Ultimate"
+version = "0.3.4"
+description = "Insurance severity modelling: composite models, DRN, EVT, MDN, SPQRx, tail scoring, CMRS allocation, and Projection-to-Ultimate"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -36,6 +36,9 @@ keywords = [
     "ptu",
     "reserving",
     "rbns",
+    "cmrs",
+    "risk-sharing",
+    "laplace-transform",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",

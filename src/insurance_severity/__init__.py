@@ -1,7 +1,7 @@
 """
 insurance-severity: comprehensive severity modelling for insurance pricing.
 
-Combines six complementary approaches:
+Combines seven complementary approaches:
 
 1. **Composite (spliced) models** — insurance_severity.composite
    Body/tail splice with covariate-dependent thresholds, mode-matching,
@@ -42,6 +42,12 @@ Combines six complementary approaches:
    arXiv:2603.11660). OLS/Ridge regression of log(ultimate/paid) on
    development features. Empirically outperforms neural networks on
    realistic reserving triangle sizes.
+
+8. **CMRS Allocator** — insurance_severity.cmrs
+   Conditional Mean Risk Sharing via Laplace-Stieltjes transforms (Blier-Wong 2026).
+   Computes h_i(s) = E[X_i | S = s] for independent losses X_1, ..., X_n with
+   aggregate S. Supports exponential, gamma, and lognormal marginals with Euler
+   summation inversion (Abate-Whitt 1995) and exponential tilting for tail values.
 
 Quick start — composite:
 
@@ -114,6 +120,17 @@ Quick start — Projection-to-Ultimate:
 >>> ptu.fit(train_df, paid_col="paid_to_date", ultimate_col="ultimate_cost")
 >>> preds = ptu.predict(open_claims_df)
 >>> ptu.summary()  # R², coefficients, residual diagnostics
+
+Quick start — CMRS allocation:
+
+>>> from insurance_severity import CMRSAllocator
+>>> alloc = CMRSAllocator(distribution='gamma')
+>>> alloc.fit_gamma(
+...     alphas=np.array([2.0, 3.0, 1.5, 4.0, 2.5]),
+...     betas=np.array([1.0, 1.0, 1.0, 1.0, 1.0]),
+... )
+>>> h = alloc.allocate(12_000_000.0)   # fair shares of £12M aggregate loss
+>>> h_scr = alloc.allocate_quantile(np.array([0.995]))  # allocation at SCR level
 """
 
 # Composite subpackage
@@ -209,6 +226,9 @@ from insurance_severity.tail_scoring import (
 # Projection-to-Ultimate
 from insurance_severity.projection import ProjectionToUltimate
 
+# CMRS allocation (pure scipy/numpy — no optional dependencies)
+from insurance_severity.cmrs import CMRSAllocator
+
 from importlib.metadata import version, PackageNotFoundError
 
 try:
@@ -269,4 +289,6 @@ __all__ = [
     "solve_bgpd_params",
     # Projection-to-Ultimate
     "ProjectionToUltimate",
+    # CMRS allocation
+    "CMRSAllocator",
 ]
