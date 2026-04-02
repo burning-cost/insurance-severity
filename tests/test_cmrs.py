@@ -61,6 +61,25 @@ def lognormal_2():
 
 
 # ---------------------------------------------------------------------------
+# Helpers: closed-form CMRS for two exponentials with rates [1, 2]
+# ---------------------------------------------------------------------------
+
+def _exp_cmrs_h1(s: float) -> float:
+    """True E[X_1 | S=s] for X_1 ~ Exp(1), X_2 ~ Exp(2), S = X_1 + X_2.
+
+    Derived analytically from the conditional density:
+        f_{X_1|S}(x|s) ∝ exp(-x) * exp(-2*(s-x))  for 0 < x < s
+    integrating x * f_{X_1|S}(x|s) gives:
+        E[X_1|S=s] = [(s - 1) + exp(-s)] / (1 - exp(-s))
+
+    This is NOT mean-proportional: the allocation fraction changes with s,
+    approaching 1/1 (participant 1 gets nearly all) as s → ∞ and approaching
+    2/3 (mean-proportional) as s → 0.
+    """
+    return ((s - 1.0) + np.exp(-s)) / (1.0 - np.exp(-s))
+
+
+# ---------------------------------------------------------------------------
 # 1. Import and construction
 # ---------------------------------------------------------------------------
 
@@ -127,24 +146,38 @@ def test_fit_exponential_negative_rate_raises():
 # 3. Exponential closed-form check
 # ---------------------------------------------------------------------------
 
-def test_exponential_closed_form(exp_2):
-    """For exponential, h_i(s) = s * (1/rate_i) / sum_j(1/rate_j).
+def test_exponential_single_s(exp_2):
+    """CMRS allocations for two exponentials match the analytical conditional expectation.
 
-    With rates [1, 2]: means [1, 0.5]; proportions [2/3, 1/3].
+    For X_1 ~ Exp(1), X_2 ~ Exp(2), S = X_1 + X_2:
+        E[X_1 | S=s] = [(s-1) + exp(-s)] / (1 - exp(-s))
+        E[X_2 | S=s] = s - E[X_1 | S=s]
+
+    This is NOT mean-proportional: CMRS gives the richer participant (smaller rate =
+    larger mean, here X_1 with rate 1) a larger share that increases with s.
     """
     s = 3.0
     h = exp_2.allocate(s)
-    expected = np.array([2.0, 1.0])  # 3 * [2/3, 1/3]
+    h1_true = _exp_cmrs_h1(s)   # ≈ 2.157
+    h2_true = s - h1_true        # ≈ 0.843
+    expected = np.array([h1_true, h2_true])
     np.testing.assert_allclose(h, expected, rtol=1e-3)
 
 
 def test_exponential_closed_form_multiple_s(exp_2):
-    """Verify proportionality holds at multiple s values."""
+    """CMRS allocation fractions for exponentials change with s (not constant).
+
+    The CMRS fraction h_1/s is NOT constant across s values — it grows from
+    ~2/3 (mean-proportional, the limit as s→0) toward 1 as s→∞.
+    We verify against the exact analytical formula at several s values.
+    """
     s_vals = np.array([1.0, 5.0, 10.0])
     h = exp_2.allocate(s_vals)  # (3, 2)
-    expected_fracs = np.array([2 / 3, 1 / 3])
     for i, sv in enumerate(s_vals):
-        np.testing.assert_allclose(h[i] / sv, expected_fracs, rtol=1e-3)
+        h1_true = _exp_cmrs_h1(sv)
+        h2_true = sv - h1_true
+        expected = np.array([h1_true, h2_true])
+        np.testing.assert_allclose(h[i], expected, rtol=1e-3)
 
 
 # ---------------------------------------------------------------------------

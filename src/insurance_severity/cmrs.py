@@ -27,13 +27,14 @@ References:
     Denuit & Dhaene (2012). Convex order and comonotonic conditional mean risk sharing.
     Insurance: Mathematics and Economics, 51(2):265-270.
 
-    Abate & Whitt (1995). Numerical inversion of Laplace transforms of probability
+    Abate & Whitt (1992). Numerical inversion of Laplace transforms of probability
     distributions. ORSA Journal on Computing, 7(1):36-43.
 """
 
 from __future__ import annotations
 
 import warnings
+from math import comb
 from typing import Callable, Optional, Union
 
 import numpy as np
@@ -41,7 +42,7 @@ from scipy import integrate, optimize, stats
 
 
 # ---------------------------------------------------------------------------
-# Euler-Abate-Whitt Laplace inversion
+# Euler-Abate-Whitt Laplace inversion with acceleration
 # ---------------------------------------------------------------------------
 
 
@@ -51,38 +52,67 @@ def _euler_inversion(
     a: float = 18.0,
     M: int = 15,
 ) -> float:
-    """Invert a Laplace transform at point x via Euler summation (Abate-Whitt 1995).
+    """Invert a Laplace transform at point x via Euler-accelerated summation.
 
-    Approximates f(x) via:
-        f(x) ≈ (e^a / x) * Re[ F*(a/x)/2 + sum_{k=1}^{M} (-1)^k F*((a + i*k*pi)/x) ]
+    Implements the Euler-accelerated Abate-Whitt method (Abate & Whitt 1992).
+    Uses M+1 direct Bromwich terms plus M+1 Euler-accelerated tail terms, for
+    a total of 2M+2 function evaluations.
 
-    where F*(s) = integral_0^inf exp(-s*t) f(t) dt is the Laplace transform.
+    This is the correct Euler acceleration — plain truncation at M terms without
+    binomial weighting fails for CMRS transforms because the alternating Bromwich
+    series converges too slowly (terms decay like 1/k^2 at best) and requires
+    enormous cancellation. With M=15 and a=18, this reaches about 1e-8 relative
+    accuracy for typical insurance loss distributions.
 
-    This is accurate to O(e^{-2a}) discretisation error for a=18, M=15 with a
-    typical rounding error ~1e-8. Suitable for actuarial applications without
-    the precision required for option pricing at extreme strikes.
+    Formula:
+        f(x) ≈ (e^a / x) * (S_direct + S_euler)
+
+    where (using f_k = Re[F*((a + ik*pi)/x)]):
+        S_direct = f_0/2 + sum_{k=1}^{M} (-1)^k f_k
+        S_euler  = (1/2^M) * sum_{j=0}^{M} C(M,j) * (-1)^{M+1+j} * f_{M+1+j}
+
+    The Euler acceleration applies van Wijngaarden binomial weights to the tail
+    of the alternating series, converting conditional convergence to absolute
+    convergence and dramatically improving accuracy.
 
     Args:
         lst_func: Callable accepting complex s, returning complex L(s).
         x: Point at which to evaluate f(x). Must be positive.
-        a: Euler parameter. Higher a = lower discretisation error but worse
-           rounding error. a=18 is standard for actuarial applications.
-        M: Number of terms. M=15 is sufficient for double precision.
+        a: Euler parameter. a=18 gives discretisation error O(e^{-36}).
+        M: Controls the number of terms. Total function evaluations = 2M+2.
+           M=15 gives ~1e-8 accuracy; increase to 20-25 for demanding cases.
 
     Returns:
         Approximation of f(x).
     """
     if x <= 0.0:
         raise ValueError(f"x must be positive for Euler inversion, got {x}")
+
     scale = np.exp(a) / x
-    t0 = a / x
-    F0 = 0.5 * np.real(lst_func(complex(t0, 0.0)))
-    total = F0
-    for k in range(1, M + 1):
+
+    # Evaluate f_k = Re[F*((a + ik*pi)/x)] for k = 0, 1, ..., 2M+1
+    # Total evaluations: 2M+2
+    n_evals = 2 * M + 2
+    f_vals = np.empty(n_evals)
+    for k in range(n_evals):
         tk = complex(a / x, k * np.pi / x)
-        Fk = np.real(lst_func(tk))
-        total += ((-1) ** k) * Fk
-    return scale * total
+        f_vals[k] = np.real(lst_func(tk))
+
+    # Direct sum: k=0..M with k=0 halved (the c_0=1/2 Bromwich endpoint correction)
+    s_direct = 0.5 * f_vals[0]
+    for k in range(1, M + 1):
+        s_direct += ((-1) ** k) * f_vals[k]
+
+    # Euler-accelerated tail: apply C(M,j)/2^M weights to tail terms k=M+1..2M+1
+    # This is the van Wijngaarden transformation of the remaining alternating series.
+    # Term k = M+1+j has sign (-1)^{M+1+j} and Euler weight C(M,j)/2^M.
+    s_euler = 0.0
+    inv_2m = 1.0 / (2 ** M)
+    for j in range(M + 1):
+        coeff = comb(M, j) * inv_2m
+        s_euler += coeff * ((-1) ** (M + 1 + j)) * f_vals[M + 1 + j]
+
+    return scale * (s_direct + s_euler)
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +200,10 @@ class CMRSAllocator:
         h_i(s) = xi_i(s) / f_S(s)
 
     where both xi_i and f_S are inverted from their Laplace transforms using the
-    Euler-Abate-Whitt method with optional exponential tilting for extreme tails.
+    Euler-accelerated Abate-Whitt method. The acceleration is essential: plain
+    truncation of the alternating Bromwich series at M terms without Euler
+    weighting fails to converge for the transforms arising in CMRS, because
+    the terms decay too slowly and enormous cancellation is required.
 
     Mathematical guarantee: sum_i h_i(s) = s (budget balance) holds exactly in
     theory and to within numerical tolerance in practice. Allocations are normalised
@@ -182,8 +215,8 @@ class CMRSAllocator:
             fit_lognormal() after construction to supply parameters.
         tilt_threshold: Activate exponential tilting when s exceeds this quantile
             of S under the fitted parameters. Default 0.99.
-        n_euler_terms: M in Euler summation. Higher = more precise but slower.
-            M=15 is accurate to ~1e-8 for typical insurance losses.
+        n_euler_terms: M in Euler summation. Total evaluations = 2M+2. Higher = more
+            precise but slower. M=15 gives ~1e-8 accuracy for typical insurance losses.
         euler_a: a parameter in Euler summation. Default 18.0 gives O(e^{-36})
             discretisation error.
         n_quad_points: Gauss-Legendre points for lognormal LST quadrature.
@@ -383,6 +416,27 @@ class CMRSAllocator:
         std = np.sqrt(self._var_s())
         return float(stats.norm.ppf(q, loc=mu, scale=std))
 
+    def _mgf_convergence_bound(self) -> float:
+        """Return theta_max such that E[exp(theta*X_i)] < inf for all i.
+
+        The CGF kappa(theta) = log E[exp(theta*S)] is only finite for
+        theta < theta_max. Exponential tilting requires theta in (0, theta_max).
+
+        For exponential: theta_max = min(rate_i)  (LST pole at rate_i).
+        For gamma:       theta_max = min(beta_i)  (LST pole at beta_i).
+        For lognormal:   lognormal has no finite MGF for theta > 0 in closed form,
+                         but the quadrature approximation stays bounded for moderate
+                         theta. We cap at 5.0 for numerical safety.
+        """
+        if self.distribution == "exponential":
+            return float(np.min(self._params["rates"]))
+        elif self.distribution == "gamma":
+            return float(np.min(self._params["betas"]))
+        elif self.distribution == "lognormal":
+            return 5.0
+        else:
+            raise RuntimeError(f"Unsupported distribution: {self.distribution!r}")
+
     # ------------------------------------------------------------------
     # Exponential tilting
     # ------------------------------------------------------------------
@@ -390,7 +444,7 @@ class CMRSAllocator:
     def _kappa(self, theta: float) -> float:
         """CGF of S: kappa(theta) = log E[exp(theta*S)] = sum_i log L_{X_i}(-theta).
 
-        Only valid for theta < min_i(boundary of LST convergence strip).
+        Only valid for theta < theta_max = _mgf_convergence_bound().
         """
         log_l = sum(np.log(np.real(self._lst_i(i, complex(-theta, 0.0))) + 1e-300)
                     for i in range(self._n))
@@ -399,45 +453,58 @@ class CMRSAllocator:
     def _kappa_prime(self, theta: float) -> float:
         """kappa'(theta) = E^theta[S] = mean of S under tilted measure.
 
-        kappa'(theta) = d/dtheta log L_S(-theta) = -L_S'(-theta)/L_S(-theta)
+        kappa'(theta) = d/dtheta log L_S(-theta)
                       = sum_i E[X_i exp(theta X_i)] / E[exp(theta X_i)]
+
+        Returns float('inf') if theta is outside the convergence strip (i.e.,
+        L_i(-theta) <= 0 for some i), so callers can detect the boundary.
         """
         total = 0.0
         for i in range(self._n):
             t = complex(-theta, 0.0)
             l_i = np.real(self._lst_i(i, t))
-            dl_i = np.real(self._lst_deriv_i(i, t))  # E[X_i exp(-(-theta)X_i)] = E[X_i exp(theta X_i)]
-            # Note: lst_deriv_i(t) = E[X_i exp(-t*X_i)]; at t=-theta, = E[X_i exp(theta X_i)]
-            total += dl_i / (l_i + 1e-300)
+            dl_i = np.real(self._lst_deriv_i(i, t))
+            if l_i <= 0:
+                return float("inf")
+            total += dl_i / l_i
         return total
 
     def _find_tilt_theta(self, s: float) -> float:
         """Find theta* such that kappa'(theta*) = s (tilted mean equals s).
 
-        Uses scipy.optimize.brentq on a bounded interval. The upper bound is
-        set conservatively to avoid numerical overflow.
+        Searches within (0, theta_max) where theta_max = _mgf_convergence_bound().
+        The CGF kappa is only defined for theta strictly less than theta_max, so the
+        search must stay inside this strip. For exponentials theta_max = min(rate_i);
+        for gammas theta_max = min(beta_i).
+
+        The strategy: binary search toward theta_max to find an upper bracket, then
+        use brentq to find the exact root.
         """
         if self._kappa_prime(0.0) >= s:
-            # s is below or at the mean, no tilting needed
             return 0.0
 
-        # Find upper bracket: search for theta where kappa'(theta) > s
-        upper = 0.1
-        for _ in range(40):
-            try:
-                if self._kappa_prime(upper) > s:
-                    break
-            except (OverflowError, ZeroDivisionError):
+        theta_max = self._mgf_convergence_bound()
+
+        # Binary search toward theta_max to find upper bracket where kappa'(upper) > s.
+        # kappa' is monotone increasing on (0, theta_max) and diverges at theta_max.
+        upper = min(0.1, theta_max * 0.5)
+        for _ in range(100):
+            kp = self._kappa_prime(upper)
+            if not np.isfinite(kp) or kp > s:
                 break
-            upper *= 2.0
+            # Halve the remaining distance to theta_max
+            upper = upper + (theta_max - upper) * 0.5
+            if upper >= theta_max * 0.99999:
+                upper = theta_max * 0.99999
+                break
         else:
             warnings.warn(
-                f"Could not find upper bracket for tilting at s={s:.4g}. "
-                "Results may be inaccurate for this tail value.",
+                f"Could not bracket tilting parameter for s={s:.4g}. "
+                "Results may be inaccurate.",
                 RuntimeWarning,
                 stacklevel=3,
             )
-            return upper / 2.0
+            return upper
 
         try:
             theta_star = optimize.brentq(
@@ -576,7 +643,7 @@ class CMRSAllocator:
     def aggregate_distribution(self, s_grid: np.ndarray) -> np.ndarray:
         """Approximate density of S on a grid via direct Laplace inversion.
 
-        Uses the Euler-Abate-Whitt method to invert L_S(t) = prod_i L_{X_i}(t).
+        Uses the Euler-accelerated Abate-Whitt method to invert L_S(t) = prod_i L_{X_i}(t).
         For extreme tail values, the result may be numerically noisy without tilting;
         consider restricting to s_grid values below the tilt_threshold quantile.
 
@@ -617,9 +684,7 @@ class CMRSAllocator:
         self._check_fitted()
         use_tilt = self._should_tilt(s)
         h = self._allocate_single(s, tilt=use_tilt)
-        raw_total = h.sum()  # after internal normalisation, this equals s
         # Compute raw (pre-normalised) totals to report actual numerical error
-        # Re-run without post-normalisation to get true error
         if use_tilt:
             theta = self._find_tilt_theta(s)
             kappa_theta = self._kappa(theta)
