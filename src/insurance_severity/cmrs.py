@@ -90,29 +90,23 @@ def _euler_inversion(
 
     scale = np.exp(a) / x
 
-    # Evaluate f_k = Re[F*((a + ik*pi)/x)] for k = 0, 1, ..., 2M+1
-    # Total evaluations: 2M+2
-    n_evals = 2 * M + 2
-    f_vals = np.empty(n_evals)
-    for k in range(n_evals):
+    # Compute d_k = (-1)^k * Re[F*((a + ikπ)/x)] for k = 0, ..., 2M
+    # These are the alternating terms of the Bromwich series.
+    n_terms = 2 * M + 1
+    d = np.empty(n_terms)
+    for k in range(n_terms):
         tk = complex(a / x, k * np.pi / x)
-        f_vals[k] = np.real(lst_func(tk))
+        d[k] = ((-1) ** k) * np.real(lst_func(tk))
+    d[0] *= 0.5  # halve k=0 term (Bromwich midpoint rule)
 
-    # Direct sum: k=0..M with k=0 halved (the c_0=1/2 Bromwich endpoint correction)
-    s_direct = 0.5 * f_vals[0]
-    for k in range(1, M + 1):
-        s_direct += ((-1) ** k) * f_vals[k]
+    # Partial sums s_j = sum_{k=0}^{j} d_k for j = 0, ..., 2M
+    s = np.cumsum(d)
 
-    # Euler-accelerated tail: apply C(M,j)/2^M weights to tail terms k=M+1..2M+1
-    # This is the van Wijngaarden transformation of the remaining alternating series.
-    # Term k = M+1+j has sign (-1)^{M+1+j} and Euler weight C(M,j)/2^M.
-    s_euler = 0.0
-    inv_2m = 1.0 / (2 ** M)
-    for j in range(M + 1):
-        coeff = comb(M, j) * inv_2m
-        s_euler += coeff * ((-1) ** (M + 1 + j)) * f_vals[M + 1 + j]
+    # Euler acceleration: average partial sums s_M through s_{2M}
+    # E_M = (1/2^M) * sum_{j=0}^{M} C(M,j) * s_{M+j}
+    result = sum(comb(M, j) * s[M + j] for j in range(M + 1)) / (2 ** M)
 
-    return scale * (s_direct + s_euler)
+    return scale * result
 
 
 # ---------------------------------------------------------------------------
