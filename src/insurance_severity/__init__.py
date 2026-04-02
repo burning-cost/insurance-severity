@@ -291,4 +291,13 @@ __all__ = [
     "ProjectionToUltimate",
     # CMRS allocation
     "CMRSAllocator",
+    # Reserving
+    "PopulationSamplingReserve",
+    "WeibullInclusionModel",
 ]
+
+# Reserving — AIPW doubly-robust IBNR estimator
+from insurance_severity.reserving import (
+    PopulationSamplingReserve,
+    WeibullInclusionModel,
+)
