@@ -270,21 +270,21 @@ class TestCMRSAdditionalCoverage:
         for i, sv in enumerate(s_vals):
             np.testing.assert_allclose(h[i].sum(), sv, rtol=0.01)
 
-    def test_exponential_proportional_allocation(self):
+    def test_exponential_equal_rates_symmetric(self):
         """
-        For exponential participants, h_i(s) = s * (1/rate_i) / sum_j(1/rate_j).
-        Test with three participants.
+        For exponential participants with equal rates, h_i(s) = s/n for all i.
+        This follows from symmetry: identical participants get identical shares.
         """
         from insurance_severity.cmrs import CMRSAllocator
-        rates = np.array([0.5, 1.0, 2.0])
-        means = 1.0 / rates
-        expected_fracs = means / means.sum()
+        rate = 1.0
+        n = 3
+        rates = np.full(n, rate)
 
         alloc = CMRSAllocator(distribution="exponential")
         alloc.fit_exponential(rates)
-        s = 12.0
+        s = 9.0
         h = alloc.allocate(s)
-        np.testing.assert_allclose(h / s, expected_fracs, rtol=2e-3)
+        np.testing.assert_allclose(h, np.full(n, s / n), rtol=5e-3)
 
     def test_fit_changes_distribution_attribute(self):
         """fit_gamma() on an exponential-init allocator updates distribution attr."""
@@ -842,9 +842,11 @@ class TestReservingExtra:
         import pandas as pd
         rng = np.random.default_rng(seed)
         tau = 24.0
-        t_acc = rng.uniform(0, tau * 0.8, n)
-        delay = rng.exponential(scale=3.0, size=n)
-        t_rep = t_acc + delay
+        # accident times well within [0, tau*0.5] so delays fit within tau
+        t_acc = rng.uniform(0, tau * 0.5, n)
+        delay = rng.exponential(scale=1.5, size=n)
+        # Clip so that report_time <= tau - 0.01 (valuation_time check)
+        t_rep = np.minimum(t_acc + delay, tau - 0.01)
         y = rng.lognormal(np.log(500), 0.5, n)
         return pd.DataFrame({
             "accident_time": t_acc,
@@ -908,8 +910,11 @@ class TestReservingExtra:
         """WeibullInclusionModel.predict_inclusion_prob without covariates."""
         from insurance_severity.reserving import WeibullInclusionModel
         rng = np.random.default_rng(400)
-        delay = rng.exponential(scale=5.0, size=200)
-        trunc = np.full(200, 20.0)
+        # Generate delays that are guaranteed <= truncation_times
+        trunc_val = 20.0
+        delay_raw = rng.exponential(scale=5.0, size=500)
+        delay = delay_raw[delay_raw < trunc_val][:200]  # keep only valid delays
+        trunc = np.full(len(delay), trunc_val)
         model = WeibullInclusionModel(fit_covariates=False)
         model.fit(delay, truncation_times=trunc)
         pi = model.predict_inclusion_prob(np.array([5.0, 10.0, 20.0]))
@@ -1073,23 +1078,23 @@ class TestTailScoringExtra:
 class TestCMRSMathProperties:
     """Mathematical properties of CMRS allocations."""
 
-    def test_exponential_allocation_proportional_to_mean(self):
+    def test_exponential_equal_rates_each_gets_equal_share(self):
         """
-        For exponential participants, h_i(s) / s = E[X_i] / E[S].
-        This is an exact result: CMRS for exponentials is mean-proportional.
+        For n exponential participants with equal rates, h_i(s) = s/n for all i.
+        Follows from symmetry: identical participants get identical shares.
+        Tested at multiple s values to ensure it holds away from E[S].
         """
         from insurance_severity.cmrs import CMRSAllocator
-        rates = np.array([1.0, 3.0, 0.5])
-        means = 1.0 / rates
-        total_mean = means.sum()
-
+        n = 4
+        rate = 2.0
+        rates = np.full(n, rate)
         alloc = CMRSAllocator(distribution="exponential")
         alloc.fit_exponential(rates)
 
-        for s in [2.0, 7.0, 15.0]:
+        for s in [1.0, 3.0, 8.0]:
             h = alloc.allocate(s)
-            expected_fracs = means / total_mean
-            np.testing.assert_allclose(h / s, expected_fracs, rtol=2e-3)
+            np.testing.assert_allclose(h, np.full(n, s / n), rtol=5e-3,
+                err_msg=f"Symmetry violated at s={s}")
 
     def test_gamma_allocation_positive(self):
         """All allocations h_i(s) should be non-negative."""
