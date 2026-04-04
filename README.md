@@ -1,9 +1,10 @@
 # insurance-severity
 
 [![PyPI](https://img.shields.io/pypi/v/insurance-severity)](https://pypi.org/project/insurance-severity/)
+[![Downloads](https://img.shields.io/pypi/dm/insurance-severity)](https://pypi.org/project/insurance-severity/)
 [![Python](https://img.shields.io/pypi/pyversions/insurance-severity)](https://pypi.org/project/insurance-severity/)
 [![Tests](https://github.com/burning-cost/insurance-severity/actions/workflows/tests.yml/badge.svg)](https://github.com/burning-cost/insurance-severity/actions/workflows/tests.yml)
-[![License](https://img.shields.io/badge/license-BSD--3-blue)]()
+[![License](https://img.shields.io/pypi/l/insurance-severity)](https://pypi.org/project/insurance-severity/)
 
 Comprehensive severity modelling for UK insurance pricing. Two complementary approaches in one package.
 
